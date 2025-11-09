@@ -10,44 +10,99 @@ export class Environment {
     }
     
     createHut() {
-        const hutGroup = new THREE.Group();
+        const merchantGroup = new THREE.Group();
         
-        // Base (main structure)
-        const baseGeometry = new THREE.BoxGeometry(4, 3, 4);
-        const baseMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-        const base = new THREE.Mesh(baseGeometry, baseMaterial);
-        base.position.y = 1.5;
-        base.castShadow = true;
-        base.receiveShadow = true;
-        hutGroup.add(base);
+        // Support posts (4 posts to hold the roof)
+        const postGeometry = new THREE.CylinderGeometry(0.15, 0.15, 4, 8);
+        const postMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
         
-        // Roof
-        const roofGeometry = new THREE.ConeGeometry(3.5, 2, 4);
+        const postPositions = [
+            { x: -2, z: -2 },
+            { x: 2, z: -2 },
+            { x: -2, z: 2 },
+            { x: 2, z: 2 }
+        ];
+        
+        postPositions.forEach(pos => {
+            const post = new THREE.Mesh(postGeometry, postMaterial);
+            post.position.set(pos.x, 2, pos.z);
+            post.castShadow = true;
+            post.receiveShadow = true;
+            merchantGroup.add(post);
+        });
+        
+        // Big roof (pyramid style)
+        const roofGeometry = new THREE.ConeGeometry(3.5, 2.5, 4);
         const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x654321 });
         const roof = new THREE.Mesh(roofGeometry, roofMaterial);
-        roof.position.y = 4;
+        roof.position.y = 4.25;
         roof.rotation.y = Math.PI / 4;
         roof.castShadow = true;
         roof.receiveShadow = true;
-        hutGroup.add(roof);
+        merchantGroup.add(roof);
         
-        // Door
-        const doorGeometry = new THREE.BoxGeometry(1, 2, 0.1);
-        const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x4A4A4A });
-        const door = new THREE.Mesh(doorGeometry, doorMaterial);
-        door.position.set(0, 1, 2.01);
-        door.castShadow = true;
-        hutGroup.add(door);
+        // Counter/table (where merchant stands behind)
+        const counterGeometry = new THREE.BoxGeometry(3, 0.8, 1);
+        const counterMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+        const counter = new THREE.Mesh(counterGeometry, counterMaterial);
+        counter.position.set(0, 0.4, -1.5);
+        counter.castShadow = true;
+        counter.receiveShadow = true;
+        merchantGroup.add(counter);
         
-        // Window
-        const windowGeometry = new THREE.BoxGeometry(0.8, 0.8, 0.1);
-        const windowMaterial = new THREE.MeshStandardMaterial({ color: 0x87CEEB });
-        const window = new THREE.Mesh(windowGeometry, windowMaterial);
-        window.position.set(1.5, 2, 2.01);
-        hutGroup.add(window);
+        // Boxes (scattered around)
+        const boxMaterial = new THREE.MeshStandardMaterial({ color: 0xD2691E });
+        const boxPositions = [
+            { x: -1.5, z: 1.5, size: 0.4 },
+            { x: 1.5, z: 1.5, size: 0.5 },
+            { x: -2, z: 0, size: 0.35 },
+            { x: 2, z: 0, size: 0.45 }
+        ];
         
-        hutGroup.position.set(10, 0, 10);
-        this.scene.add(hutGroup);
+        boxPositions.forEach(pos => {
+            const boxGeometry = new THREE.BoxGeometry(pos.size, pos.size, pos.size);
+            const box = new THREE.Mesh(boxGeometry, boxMaterial);
+            box.position.set(pos.x, pos.size / 2, pos.z);
+            box.castShadow = true;
+            box.receiveShadow = true;
+            merchantGroup.add(box);
+        });
+        
+        // Hay bales
+        const hayMaterial = new THREE.MeshStandardMaterial({ color: 0xDAA520 });
+        const hayPositions = [
+            { x: -1, z: 2, rotation: 0 },
+            { x: 1, z: 2, rotation: Math.PI / 4 },
+            { x: 0, z: 2.5, rotation: Math.PI / 2 }
+        ];
+        
+        hayPositions.forEach(pos => {
+            const hayGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.6, 8);
+            const hay = new THREE.Mesh(hayGeometry, hayMaterial);
+            hay.position.set(pos.x, 0.3, pos.z);
+            hay.rotation.z = pos.rotation;
+            hay.castShadow = true;
+            hay.receiveShadow = true;
+            merchantGroup.add(hay);
+        });
+        
+        // Additional crates/barrels
+        const crateMaterial = new THREE.MeshStandardMaterial({ color: 0x654321 });
+        const crateGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+        const crate = new THREE.Mesh(crateGeometry, crateMaterial);
+        crate.position.set(-1.8, 0.25, -1);
+        crate.castShadow = true;
+        crate.receiveShadow = true;
+        merchantGroup.add(crate);
+        
+        const crate2 = new THREE.Mesh(crateGeometry, crateMaterial);
+        crate2.position.set(1.8, 0.25, -1);
+        crate2.castShadow = true;
+        crate2.receiveShadow = true;
+        merchantGroup.add(crate2);
+        
+        merchantGroup.position.set(10, 0, 10);
+        this.scene.add(merchantGroup);
     }
     
     createTrees() {
