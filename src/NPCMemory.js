@@ -3,13 +3,13 @@
  * Stores conversation history, action memory, and personality
  */
 export class NPCMemory {
-    constructor(npcId) {
+    constructor(npcId, personality = null) {
         this.npcId = npcId;
         
         // Initialize memory structure
         this.memory = {
             npcId: npcId,
-            personality: null, // Will store full personality object: { name, displayName, backstory, traits, ... }
+            personality: personality, // Store full personality object: { name, displayName, backstory, traits, ... }
             conversationHistory: [],
             actionMemory: [],
             // Player interaction tracking
@@ -18,8 +18,13 @@ export class NPCMemory {
             lastUpdated: new Date().toISOString()
         };
         
-        // Load existing memory
+        // Load existing memory (will preserve personality if already saved)
         this.loadMemory();
+        
+        // If personality was provided and not in memory, save it
+        if (personality && !this.memory.personality) {
+            this.setPersonality(personality);
+        }
     }
     
     /**
@@ -40,12 +45,16 @@ export class NPCMemory {
                     this.memory.playerInteractions = [];
                 }
                 
+                // Preserve personality if it exists in saved memory
+                // (This allows NPCs to remember their identity across sessions)
+                
                 console.log(`[Memory NPC ${this.npcId}] Memory loaded:`, {
                     conversations: this.memory.conversationHistory?.length || 0,
                     actions: this.memory.actionMemory?.length || 0,
                     playerInteractions: this.memory.playerInteractions?.length || 0,
                     playerReputation: this.memory.playerReputation || 0,
-                    hasPersonality: !!this.memory.personality
+                    hasPersonality: !!this.memory.personality,
+                    npcName: this.memory.personality?.name || 'Unknown'
                 });
             } else {
                 console.log(`[Memory NPC ${this.npcId}] No existing memory found, starting fresh`);

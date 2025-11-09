@@ -5,12 +5,13 @@ import * as THREE from 'three';
  * Handles reasoning, tool calling, and memory management
  */
 export class NPCAgent {
-    constructor(npc, game, memory) {
+    constructor(npc, game, memory, playerInfo = null) {
         console.log(`[Agent NPC ${npc.id}] Initializing agent...`);
         this.npc = npc;
         this.game = game;
         this.memory = memory;
-        this.apiKey = 'AIzaSyCVE70C-PiaKvLXQrtvPMuzjT80yhTcY1k';
+        this.playerInfo = playerInfo || { name: 'Player', interests: '' };
+        this.apiKey = 'AIzaSyAgY5r2VMnKWwlWR37REz3-FpsfaGzVHPg';
         this.model = 'gemini-2.0-flash-lite'; // Using Gemini 2.0 Flash-Lite as specified
         this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
         
@@ -344,10 +345,21 @@ export class NPCAgent {
             personalitySection = `You are an NPC in a 3D game world.\n`;
         }
         
+        // Build player info section
+        let playerInfoSection = '';
+        if (this.playerInfo && this.playerInfo.name) {
+            playerInfoSection = `\nPLAYER INFORMATION:\n`;
+            playerInfoSection += `- Player Name: ${this.playerInfo.name}\n`;
+            if (this.playerInfo.interests && this.playerInfo.interests.trim()) {
+                playerInfoSection += `- Player Interests: ${this.playerInfo.interests}\n`;
+            }
+            playerInfoSection += `\nYou should address the player by their name (${this.playerInfo.name}) when speaking to them. Use this information to have more meaningful conversations based on their interests.\n`;
+        }
+        
         return `${personalitySection}
 
 Your current state: ${context.npcState.state}
-Your position: (${context.npcState.position.x.toFixed(1)}, ${context.npcState.position.y.toFixed(1)}, ${context.npcState.position.z.toFixed(1)})
+Your position: (${context.npcState.position.x.toFixed(1)}, ${context.npcState.position.y.toFixed(1)}, ${context.npcState.position.z.toFixed(1)})${playerInfoSection}
 
 PLAYER REPUTATION: ${context.memory.playerReputation > 0 ? `+${context.memory.playerReputation} (Friendly)` : context.memory.playerReputation < 0 ? `${context.memory.playerReputation} (Hostile)` : '0 (Neutral)'}
 ${context.memory.recentPlayerInteractions.length > 0 ? `Recent player interactions: ${context.memory.recentPlayerInteractions.slice(-3).map(i => `${i.type} (${i.impact})`).join(', ')}` : 'No recent player interactions'}

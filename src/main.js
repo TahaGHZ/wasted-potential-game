@@ -11,9 +11,13 @@ import { Rock } from './Rock.js';
 import { SpeechToText } from './SpeechToText.js';
 import { NPCAgent } from './NPCAgent.js';
 import { NPCMemory } from './NPCMemory.js';
+import { GameSetup } from './GameSetup.js';
 
 class Game {
-    constructor() {
+    constructor(setupData = null) {
+        this.setupData = setupData || this.loadPlayerInfo();
+        this.playerInfo = this.setupData?.player || { name: 'Player', interests: '' };
+        
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x87CEEB); // Sky blue (will be updated by day/night cycle)
         
@@ -34,7 +38,12 @@ class Game {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        document.getElementById('canvas-container').appendChild(this.renderer.domElement);
+        
+        // Only append renderer if setup is complete (canvas-container should exist)
+        const canvasContainer = document.getElementById('canvas-container');
+        if (canvasContainer) {
+            canvasContainer.appendChild(this.renderer.domElement);
+        }
         
         // Ground
         this.createGround();
@@ -612,19 +621,66 @@ class Game {
         // const merchant = new NPC(this.scene, merchantPosition, 0, this.environmentManager);
         // this.npcs.push(merchant);
         
-        // Spawn 2 NPCs near trees
-        // Tree positions: (-15, 15), (20, -10), (-20, -15), (15, 20), (-10, 25), (25, 10), (-25, -5)
-        const npc1Position = new THREE.Vector3(-12, 0, 12); // Near tree at (-15, 15) - Elenor
-        const npc2Position = new THREE.Vector3(17, 0, -7); // Near tree at (20, -10) - Marcus
+        // Tree positions for spawning: (-15, 15), (20, -10), (-20, -15), (15, 20), (-10, 25), (25, 10), (-25, -5)
+        const spawnPositions = [
+            new THREE.Vector3(-12, 0, 12),
+            new THREE.Vector3(17, 0, -7),
+            new THREE.Vector3(-17, 0, -12),
+            new THREE.Vector3(12, 0, 17),
+            new THREE.Vector3(-7, 0, 22),
+            new THREE.Vector3(22, 0, 7),
+            new THREE.Vector3(-22, 0, -2)
+        ];
         
-        const npc1 = new NPC(this.scene, npc1Position, 1, this.environmentManager); // Elenor
-        const npc2 = new NPC(this.scene, npc2Position, 2, this.environmentManager); // Marcus
+        // Get NPC profiles from setup data
+        const npcProfiles = this.setupData?.npcProfiles || [];
         
-        this.npcs.push(npc1);
-        this.npcs.push(npc2);
+        if (npcProfiles.length === 0) {
+            // Default NPCs if no setup data
+            const npc1 = new NPC(this.scene, spawnPositions[0], 1, this.environmentManager, null);
+            const npc2 = new NPC(this.scene, spawnPositions[1], 2, this.environmentManager, null);
+            this.npcs.push(npc1);
+            this.npcs.push(npc2);
+        } else {
+            // Spawn NPCs from profiles
+            npcProfiles.forEach((profile, index) => {
+                if (index < spawnPositions.length) {
+                    const npc = new NPC(
+                        this.scene,
+                        spawnPositions[index],
+                        profile.id || index,
+                        this.environmentManager,
+                        profile
+                    );
+                    this.npcs.push(npc);
+                }
+            });
+        }
         
         // Set up AI agents for NPCs (after adding to array)
         this.setupNPCAgents();
+    }
+    
+    /**
+     * Load player info from localStorage
+     */
+    loadPlayerInfo() {
+        try {
+            const stored = localStorage.getItem('player_info');
+            if (stored) {
+                const playerInfo = JSON.parse(stored);
+                return {
+                    player: {
+                        name: playerInfo.name || 'Player',
+                        interests: playerInfo.interests || ''
+                    },
+                    npcProfiles: [] // Will be loaded separately
+                };
+            }
+        } catch (error) {
+            console.error('[Game] Error loading player info:', error);
+        }
+        return null;
     }
     
     setupNPCAgents() {
@@ -638,12 +694,12 @@ class Game {
             npc.setGame(this);
             console.log(`[Game] NPC ${npc.id}: Game reference set`);
             
-            // Create memory
-            const memory = new NPCMemory(npc.id);
+            // Create memory (will load from localStorage if profile exists)
+            const memory = new NPCMemory(npc.id, npc.personality);
             console.log(`[Game] NPC ${npc.id}: Memory created`);
             
-            // Create agent
-            const agent = new NPCAgent(npc, this, memory);
+            // Create agent with player info
+            const agent = new NPCAgent(npc, this, memory, this.playerInfo);
             console.log(`[Game] NPC ${npc.id}: Agent created`);
             
             // Link agent to NPC
@@ -904,19 +960,32 @@ class Game {
     }
 }
 
-// Start the game
-const game = new Game();
+// Initialize setup screen
+const gameSetup = new GameSetup();
 
-// Expose methods globally for LLM context
-window.getTime = () => game.getTime();
-window.getInteractables = () => game.getInteractables();
-window.interactWithLamp = (lampIndex) => game.interactWithLamp(lampIndex);
-window.collectRock = (rock) => game.collectRock(rock);
-window.throwRockAt = (startPosition, direction, speed, thrower, checkInventory = false) => {
-    const pos = new THREE.Vector3(startPosition.x, startPosition.y, startPosition.z);
-    const dir = new THREE.Vector3(direction.x, direction.y, direction.z).normalize();
-    return game.throwRockAt(pos, dir, speed, thrower, checkInventory);
-};
-window.getAvailableRocks = () => game.getAvailableRocks();
-window.getInventory = () => game.getInventory();
+// Show setup screen first
+gameSetup.showSetup();
+
+// Wait for setup to complete
+let game = null;
+window.addEventListener('gameSetupComplete', (event) => {
+    const setupData = event.detail;
+    console.log('[Main] Game setup complete, starting game...', setupData);
+    
+    // Start game with setup data
+    game = new Game(setupData);
+    
+    // Expose methods globally for LLM context
+    window.getTime = () => game.getTime();
+    window.getInteractables = () => game.getInteractables();
+    window.interactWithLamp = (lampIndex) => game.interactWithLamp(lampIndex);
+    window.collectRock = (rock) => game.collectRock(rock);
+    window.throwRockAt = (startPosition, direction, speed, thrower, checkInventory = false) => {
+        const pos = new THREE.Vector3(startPosition.x, startPosition.y, startPosition.z);
+        const dir = new THREE.Vector3(direction.x, direction.y, direction.z).normalize();
+        return game.throwRockAt(pos, dir, speed, thrower, checkInventory);
+    };
+    window.getAvailableRocks = () => game.getAvailableRocks();
+    window.getInventory = () => game.getInventory();
+});
 

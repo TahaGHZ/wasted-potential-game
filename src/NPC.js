@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 
 export class NPC {
-    constructor(scene, position, id, environmentManager = null) {
+    constructor(scene, position, id, environmentManager = null, customPersonality = null) {
         this.scene = scene;
         this.position = position.clone();
         this.id = id;
         this.environmentManager = environmentManager;
         
         // NPC attributes (for future expansion)
-        this.personality = this.generatePersonality();
+        // Use custom personality if provided, otherwise generate default
+        this.personality = customPersonality || this.generatePersonality();
         this.attributes = this.generateAttributes();
         this.state = 'idle'; // idle, walking, talking, etc.
         
@@ -448,6 +449,40 @@ export class NPC {
         };
     }
     
+    /**
+     * Determine if NPC is female based on personality, name, or backstory
+     */
+    isFemale() {
+        const personality = this.personality || {};
+        const name = (personality.name || '').toLowerCase();
+        const backstory = (personality.backstory || '').toLowerCase();
+        
+        // Common female names
+        const femaleNames = ['elenor', 'eleanor', 'lydia', 'sarah', 'emily', 'anna', 'maria', 'sophia', 'luna', 'zoe', 'lily', 'ava', 'isabella', 'olivia', 'charlotte', 'amelia', 'harper', 'evelyn', 'abigail', 'ella'];
+        
+        // Check if name suggests female
+        if (femaleNames.some(fn => name.includes(fn))) {
+            return true;
+        }
+        
+        // Check backstory for gender indicators
+        const femaleIndicators = ['she', 'her', 'woman', 'girl', 'female', 'lady', 'maiden', 'queen', 'princess', 'witch', 'sorceress', 'priestess'];
+        const maleIndicators = ['he', 'his', 'him', 'man', 'boy', 'male', 'gentleman', 'king', 'prince', 'wizard', 'sorcerer', 'priest'];
+        
+        const femaleCount = femaleIndicators.filter(ind => backstory.includes(ind)).length;
+        const maleCount = maleIndicators.filter(ind => backstory.includes(ind)).length;
+        
+        if (femaleCount > maleCount) {
+            return true;
+        }
+        if (maleCount > femaleCount) {
+            return false;
+        }
+        
+        // Default based on ID (for backward compatibility)
+        return this.id === 1; // Elenor is female by default
+    }
+    
     speakText(text) {
         if (!this.speechSynthesis) {
             console.warn(`[NPC ${this.id}] Speech synthesis not available`);
@@ -466,43 +501,98 @@ export class NPC {
         utterance.rate = 1.0; // Normal speed
         utterance.pitch = 1.0; // Normal pitch
         utterance.volume = 0.8; // 80% volume
-        utterance.lang = 'en-US';
         
         // Try to use a more natural voice if available
         const voices = this.speechSynthesis.getVoices();
         if (voices.length > 0) {
             let preferredVoice = null;
+            const isFemale = this.isFemale();
             
-            if (this.id === 1) {
-                // Elenor - prefer female voices
+            if (isFemale) {
+                // Female NPC - prioritize UK English female voices
+                // First try UK English female voices
                 preferredVoice = voices.find(voice => 
-                    voice.name.toLowerCase().includes('female') || 
-                    voice.name.toLowerCase().includes('zira') ||
-                    voice.name.toLowerCase().includes('samantha')
-                ) || voices.find(voice => voice.lang.startsWith('en'));
-            } else if (this.id === 2) {
-                // Marcus - prefer male voices
+                    (voice.lang === 'en-GB' || voice.lang.startsWith('en-GB')) &&
+                    (voice.name.toLowerCase().includes('female') || 
+                     voice.name.toLowerCase().includes('uk') ||
+                     voice.name.toLowerCase().includes('british') ||
+                     voice.name.toLowerCase().includes('zira') ||
+                     voice.name.toLowerCase().includes('hazel') ||
+                     voice.name.toLowerCase().includes('susan'))
+                );
+                
+                // If no UK female found, try any UK English voice
+                if (!preferredVoice) {
+                    preferredVoice = voices.find(voice => 
+                        (voice.lang === 'en-GB' || voice.lang.startsWith('en-GB')) &&
+                        !voice.name.toLowerCase().includes('male') &&
+                        !voice.name.toLowerCase().includes('david') &&
+                        !voice.name.toLowerCase().includes('mark') &&
+                        !voice.name.toLowerCase().includes('richard') &&
+                        !voice.name.toLowerCase().includes('daniel')
+                    );
+                }
+                
+                // If still no UK voice, try any female voice
+                if (!preferredVoice) {
+                    preferredVoice = voices.find(voice => 
+                        voice.name.toLowerCase().includes('female') || 
+                        voice.name.toLowerCase().includes('zira') ||
+                        voice.name.toLowerCase().includes('samantha') ||
+                        voice.name.toLowerCase().includes('susan') ||
+                        voice.name.toLowerCase().includes('hazel')
+                    );
+                }
+                
+                // Fallback to any English voice (excluding obvious male voices)
+                if (!preferredVoice) {
+                    preferredVoice = voices.find(voice => 
+                        voice.lang.startsWith('en') &&
+                        !voice.name.toLowerCase().includes('male') &&
+                        !voice.name.toLowerCase().includes('david') &&
+                        !voice.name.toLowerCase().includes('mark') &&
+                        !voice.name.toLowerCase().includes('richard') &&
+                        !voice.name.toLowerCase().includes('daniel')
+                    );
+                }
+            } else {
+                // Male NPC - prioritize male voices
                 preferredVoice = voices.find(voice => 
                     voice.name.toLowerCase().includes('male') || 
                     voice.name.toLowerCase().includes('david') ||
                     voice.name.toLowerCase().includes('mark') ||
                     voice.name.toLowerCase().includes('richard') ||
-                    voice.name.toLowerCase().includes('daniel')
-                ) || voices.find(voice => 
-                    voice.lang.startsWith('en') && 
-                    !voice.name.toLowerCase().includes('female') &&
-                    !voice.name.toLowerCase().includes('zira') &&
-                    !voice.name.toLowerCase().includes('samantha')
-                ) || voices.find(voice => voice.lang.startsWith('en'));
-            } else {
-                // Default - any English voice
+                    voice.name.toLowerCase().includes('daniel') ||
+                    voice.name.toLowerCase().includes('james') ||
+                    voice.name.toLowerCase().includes('thomas')
+                );
+                
+                // If no obvious male voice, try to exclude female voices
+                if (!preferredVoice) {
+                    preferredVoice = voices.find(voice => 
+                        voice.lang.startsWith('en') && 
+                        !voice.name.toLowerCase().includes('female') &&
+                        !voice.name.toLowerCase().includes('zira') &&
+                        !voice.name.toLowerCase().includes('samantha') &&
+                        !voice.name.toLowerCase().includes('susan') &&
+                        !voice.name.toLowerCase().includes('hazel')
+                    );
+                }
+            }
+            
+            // Final fallback to any English voice
+            if (!preferredVoice) {
                 preferredVoice = voices.find(voice => voice.lang.startsWith('en'));
             }
             
             if (preferredVoice) {
                 utterance.voice = preferredVoice;
-                console.log(`[NPC ${this.id}] Using voice: ${preferredVoice.name}`);
+                utterance.lang = preferredVoice.lang || 'en-GB';
+                console.log(`[NPC ${this.id}] Using ${isFemale ? 'female' : 'male'} voice: ${preferredVoice.name} (${preferredVoice.lang})`);
             }
+        } else {
+            // No voices available, use default
+            utterance.lang = 'en-GB';
         }
         
         // Event handlers
