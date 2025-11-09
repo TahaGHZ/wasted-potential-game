@@ -9,7 +9,7 @@ export class NPCMemory {
         // Initialize memory structure
         this.memory = {
             npcId: npcId,
-            personality: null,
+            personality: null, // Will store full personality object: { name, displayName, backstory, traits, ... }
             conversationHistory: [],
             actionMemory: [],
             lastUpdated: new Date().toISOString()
@@ -96,11 +96,18 @@ export class NPCMemory {
     }
     
     /**
-     * Set personality
+     * Set personality (full personality object with name, displayName, backstory, traits)
      */
     setPersonality(personality) {
         this.memory.personality = personality;
         this.saveMemory();
+    }
+    
+    /**
+     * Get personality
+     */
+    getPersonality() {
+        return this.memory.personality;
     }
     
     /**

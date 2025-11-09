@@ -322,7 +322,7 @@ class Game {
         
         // Get player position (camera position)
         const playerPosition = this.camera.position;
-        const interactionRange = 5.0; // Range for NPC interaction
+        const interactionRange = 15.0; // Range for NPC interaction (increased from 5.0)
         
         console.log(`[Game] Player position: (${playerPosition.x.toFixed(2)}, ${playerPosition.y.toFixed(2)}, ${playerPosition.z.toFixed(2)})`);
         console.log(`[Game] Total NPCs: ${this.npcs.length}`);

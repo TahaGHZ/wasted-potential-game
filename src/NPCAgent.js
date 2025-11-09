@@ -11,7 +11,7 @@ export class NPCAgent {
         this.game = game;
         this.memory = memory;
         this.apiKey = 'AIzaSyBQYtUs-QEJ9Vi8wbJPF3wNWynTqACNtg8';
-        this.model = 'gemini-2.0-flash-lite';
+        this.model = 'gemini-2.0-flash-lite'; // Using Gemini 2.0 Flash-Lite as specified
         this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
         
         // Agent state
@@ -126,7 +126,18 @@ export class NPCAgent {
             },
             tools: [{
                 functionDeclarations: this.getToolDefinitions()
-            }]
+            }],
+            toolConfig: {
+                functionCallingConfig: {
+                    mode: 'AUTO' // AUTO mode allows the model to decide when to call functions
+                    // Note: allowedFunctionNames can only be used with ANY mode, not AUTO
+                }
+            },
+            systemInstruction: {
+                parts: [{
+                    text: 'You are an NPC agent in a 3D game. You MUST use function calls to interact with the world. Always call at least one function tool when responding to events. Use speak() to communicate, move_to() or navigation tools to move, and interaction tools to interact with objects. Act according to your personality and backstory.'
+                }]
+            }
         };
         
         try {
@@ -151,20 +162,37 @@ export class NPCAgent {
             }
             
             const data = await response.json();
-            console.log(`[NPC ${this.npc.id}] Gemini API response received`);
+            console.log(`[NPC ${this.npc.id}] Gemini API response received:`, JSON.stringify(data, null, 2));
             
-            // Extract response text and function calls
+            // Check for direct functionCalls in response (newer API format)
+            if (data.functionCalls && data.functionCalls.length > 0) {
+                console.log(`[NPC ${this.npc.id}] Function calls found in response.functionCalls:`, data.functionCalls);
+                return {
+                    text: data.text || '',
+                    functionCalls: data.functionCalls.map(fc => ({
+                        name: fc.name,
+                        args: fc.args || {}
+                    }))
+                };
+            }
+            
+            // Extract response text and function calls from candidates
             if (data.candidates && data.candidates[0]) {
                 const candidate = data.candidates[0];
                 const content = candidate.content;
                 
+                console.log(`[NPC ${this.npc.id}] Candidate content:`, JSON.stringify(content, null, 2));
+                
                 // Check for function calls
                 if (content.parts) {
                     const parts = content.parts;
-                    const functionCalls = parts.filter(p => p.functionCall).map(p => ({
-                        name: p.functionCall.name,
-                        args: p.functionCall.args || {}
-                    }));
+                    const functionCalls = parts.filter(p => p.functionCall).map(p => {
+                        console.log(`[NPC ${this.npc.id}] Found functionCall part:`, p.functionCall);
+                        return {
+                            name: p.functionCall.name,
+                            args: p.functionCall.args || {}
+                        };
+                    });
                     const textParts = parts.filter(p => p.text);
                     
                     const responseText = textParts.map(p => p.text).join(' ').trim();
@@ -184,6 +212,7 @@ export class NPCAgent {
             }
             
             console.warn(`[NPC ${this.npc.id}] No valid response structure in API response`);
+            console.warn(`[NPC ${this.npc.id}] Full response:`, JSON.stringify(data, null, 2));
             return null;
         } catch (error) {
             console.error(`[NPC ${this.npc.id}] Error calling Gemini API:`, error);
@@ -197,26 +226,61 @@ export class NPCAgent {
     buildSystemPrompt(context) {
         const personality = context.memory.personality || this.npc.personality;
         
-        return `You are an NPC in a 3D game world. Your personality traits are:
-- Friendliness: ${personality.friendliness.toFixed(2)}
-- Curiosity: ${personality.curiosity.toFixed(2)}
-- Energy: ${personality.energy.toFixed(2)}
-- Talkativeness: ${personality.talkativeness.toFixed(2)}
+        // Build personality section
+        let personalitySection = '';
+        if (personality) {
+            // Include backstory and identity if available
+            if (personality.backstory) {
+                personalitySection += `${personality.backstory}\n\n`;
+            }
+            
+            // Include name if available
+            if (personality.name) {
+                personalitySection += `Your name is ${personality.name}.\n`;
+            }
+            
+            // Include traits if available
+            if (personality.traits) {
+                personalitySection += `\nYour core values and traits:\n`;
+                Object.entries(personality.traits).forEach(([trait, value]) => {
+                    if (typeof value === 'number') {
+                        personalitySection += `- ${trait.charAt(0).toUpperCase() + trait.slice(1)}: ${value.toFixed(2)}\n`;
+                    } else {
+                        personalitySection += `- ${trait.charAt(0).toUpperCase() + trait.slice(1)}: ${value}\n`;
+                    }
+                });
+            } else {
+                // Fallback to legacy numeric traits
+                personalitySection += `\nYour personality traits:\n`;
+                personalitySection += `- Friendliness: ${personality.friendliness?.toFixed(2) || '0.50'}\n`;
+                personalitySection += `- Curiosity: ${personality.curiosity?.toFixed(2) || '0.50'}\n`;
+                personalitySection += `- Energy: ${personality.energy?.toFixed(2) || '0.50'}\n`;
+                personalitySection += `- Talkativeness: ${personality.talkativeness?.toFixed(2) || '0.50'}\n`;
+            }
+        } else {
+            personalitySection = `You are an NPC in a 3D game world.\n`;
+        }
+        
+        return `${personalitySection}
 
 Your current state: ${context.npcState.state}
 Your position: (${context.npcState.position.x.toFixed(1)}, ${context.npcState.position.y.toFixed(1)}, ${context.npcState.position.z.toFixed(1)})
 
-Environment:
-- Time of day: ${context.environment?.timeOfDay || 'unknown'}
-- Weather: ${context.environment?.weather || 'unknown'}
-- Temperature: ${context.environment?.temperature || 'unknown'}°C
+IMPORTANT: You MUST use function calls to interact with the world. You have access to these tools:
+${this.getToolDefinitions().map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
 
-You can use tools to interact with the world. When you want to perform an action, use the appropriate tool function.
-When you want to speak, use the speak tool with your response text.
+When responding to events:
+1. ALWAYS call at least one function tool to take action
+2. Use the 'speak' tool to communicate with others
+3. Use movement tools (move_to, go_to_nearest_rock, go_to_nearest_lamp) to navigate
+4. Use interaction tools (collect_rock, throw_rock, toggle_lamp) to interact with objects
+5. Use hide_from_rain when weather is rainy
 
-Recent actions: ${context.memory.recentActions.slice(-5).map(a => a.action).join(', ') || 'none'}
+DO NOT just respond with text - you MUST call function tools to take actions in the world.
 
-Respond naturally based on your personality and the current situation.`;
+Recent actions: ${context.memory.recentActions.slice(-2).map(a => a.action).join(', ') || 'none'}
+
+Based on your personality, backstory, and the current situation, decide what actions to take and call the appropriate function tools. Remember who you are and act accordingly.`;
     }
     
     /**
@@ -227,19 +291,19 @@ Respond naturally based on your personality and the current situation.`;
         
         switch (eventType) {
             case 'player_query':
-                return `The player nearby said: "${eventData.transcript}"\n\nHow do you respond?`;
+                return `The player nearby said: "${eventData.transcript}"\n\nYou MUST respond by calling function tools. Use the speak() tool to respond verbally, and consider using other tools like move_to(), go_to_nearest_rock(), or collect_rock() if appropriate. What actions do you take?`;
             
             case 'environment_change':
-                return `The environment changed: ${eventData.change} (${eventData.details || ''})\n\nHow do you react?`;
+                return `The environment changed: ${eventData.change} (${eventData.details || ''})\n\nYou MUST react by calling function tools. For example, if it's raining, use hide_from_rain(). If it's getting dark, use go_to_nearest_lamp() and toggle_lamp(). What actions do you take?`;
             
             case 'hit':
-                return `You were hit by ${eventData.thrower?.id || 'someone'}!\n\nHow do you react?`;
+                return `You were hit by ${eventData.thrower?.id || 'someone'}!\n\nYou MUST react by calling function tools. You could use speak() to respond, throw_rock() to retaliate, or move_to() to get away. What actions do you take?`;
             
             case 'periodic':
-                return `Periodic check: What do you want to do now?`;
+                return `Periodic check: What do you want to do now? Use function tools to take actions in the world.`;
             
             default:
-                return `Event occurred: ${eventType}\n\nHow do you respond?`;
+                return `Event occurred: ${eventType}\n\nYou MUST respond by calling function tools. What actions do you take?`;
         }
     }
     
@@ -461,7 +525,19 @@ Respond naturally based on your personality and the current situation.`;
         
         if (nearest) {
             console.log(`[NPC ${this.npc.id}] Found nearest rock at distance ${minDist.toFixed(2)}`);
-            this.moveTo(nearest.position.x, 0, nearest.position.z);
+            // Add offset to avoid collision (move to position slightly away from rock)
+            const offset = 1.5; // Distance to stop from rock
+            const direction = new THREE.Vector3()
+                .subVectors(this.npc.position, nearest.position)
+                .normalize();
+            
+            // If already very close, use a default offset direction
+            if (direction.length() < 0.1) {
+                direction.set(1, 0, 0); // Default to positive X direction
+            }
+            
+            const targetPos = nearest.position.clone().add(direction.multiplyScalar(offset));
+            this.moveTo(targetPos.x, 0, targetPos.z);
         }
     }
     
@@ -486,7 +562,19 @@ Respond naturally based on your personality and the current situation.`;
         
         if (nearest) {
             console.log(`[NPC ${this.npc.id}] Found nearest lamp at distance ${minDist.toFixed(2)}`);
-            this.moveTo(nearest.position.x, 0, nearest.position.z);
+            // Add offset to avoid collision (move to position slightly away from lamp)
+            const offset = 1.5; // Distance to stop from lamp
+            const direction = new THREE.Vector3()
+                .subVectors(this.npc.position, nearest.position)
+                .normalize();
+            
+            // If already very close, use a default offset direction
+            if (direction.length() < 0.1) {
+                direction.set(1, 0, 0); // Default to positive X direction
+            }
+            
+            const targetPos = nearest.position.clone().add(direction.multiplyScalar(offset));
+            this.moveTo(targetPos.x, 0, targetPos.z);
         }
     }
     
@@ -569,7 +657,20 @@ Respond naturally based on your personality and the current situation.`;
         
         if (nearest) {
             console.log(`[NPC ${this.npc.id}] Found nearest shelter: ${nearest.type} at distance ${minDist.toFixed(2)}`);
-            this.moveTo(nearest.x, 0, nearest.z);
+            // Add offset to avoid collision (move to position slightly away from shelter)
+            const offset = 2.0; // Distance to stop from shelter (trees/hut are larger)
+            const shelterPos = new THREE.Vector3(nearest.x, 0, nearest.z);
+            const direction = new THREE.Vector3()
+                .subVectors(this.npc.position, shelterPos)
+                .normalize();
+            
+            // If already very close, use a default offset direction
+            if (direction.length() < 0.1) {
+                direction.set(1, 0, 0); // Default to positive X direction
+            }
+            
+            const targetPos = shelterPos.clone().add(direction.multiplyScalar(offset));
+            this.moveTo(targetPos.x, 0, targetPos.z);
             this.speak(`Going to ${nearest.type} for shelter`);
         } else {
             console.log(`[NPC ${this.npc.id}] No shelter found`);

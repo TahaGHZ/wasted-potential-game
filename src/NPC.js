@@ -30,15 +30,33 @@ export class NPC {
         this.currentSpeech = null;
         this.speechTimeout = null;
         this.setupSpeechBubble();
+        
+        // Name tag system
+        this.nameTag = null;
+        this.setupNameTag();
     }
     
     generatePersonality() {
-        // Personality traits for future implementation
+        // Static personality for the single NPC (for now)
+        // Later, this will be generated from natural language paragraphs
         return {
-            friendliness: Math.random(),
-            curiosity: Math.random(),
-            energy: Math.random(),
-            talkativeness: Math.random()
+            name: 'Elenor',
+            displayName: 'Elenor',
+            backstory: 'You are Elenor, an elven mage from the Silverwoods. You value order, wisdom, and loyalty.',
+            traits: {
+                order: 0.9,      // High value for order
+                wisdom: 0.95,    // Very high value for wisdom
+                loyalty: 0.85,   // High value for loyalty
+                friendliness: 0.7,
+                curiosity: 0.8,
+                energy: 0.6,
+                talkativeness: 0.75
+            },
+            // Legacy numeric traits for compatibility
+            friendliness: 0.7,
+            curiosity: 0.8,
+            energy: 0.6,
+            talkativeness: 0.75
         };
     }
     
@@ -114,17 +132,8 @@ export class NPC {
         rightLeg.receiveShadow = true;
         npcGroup.add(rightLeg);
         
-        // Name tag (for identification)
-        const nameTagGeometry = new THREE.PlaneGeometry(1, 0.3);
-        const nameTagMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x000000,
-            transparent: true,
-            opacity: 0.7
-        });
-        const nameTag = new THREE.Mesh(nameTagGeometry, nameTagMaterial);
-        nameTag.position.y = 2.5;
-        nameTag.lookAt(0, 2.5, 0); // Face camera direction (simplified)
-        npcGroup.add(nameTag);
+        // Name tag will be created as HTML element (similar to speech bubble)
+        // No 3D mesh needed for name tag
         
         return npcGroup;
     }
@@ -148,6 +157,11 @@ export class NPC {
         // Update speech bubble position
         if (this.speechBubble) {
             this.updateSpeechBubble();
+        }
+        
+        // Update name tag position
+        if (this.nameTag) {
+            this.updateNameTag();
         }
     }
     
@@ -195,6 +209,47 @@ export class NPC {
             pointer-events: none;
         `;
         document.body.appendChild(this.speechBubble);
+    }
+    
+    setupNameTag() {
+        // Create name tag element
+        const displayName = this.personality?.displayName || this.personality?.name || `NPC ${this.id}`;
+        this.nameTag = document.createElement('div');
+        this.nameTag.id = `npc-name-${this.id}`;
+        this.nameTag.textContent = displayName;
+        this.nameTag.style.cssText = `
+            position: absolute;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 4px 10px;
+            border-radius: 4px;
+            z-index: 99;
+            font-size: 12px;
+            text-align: center;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+            white-space: nowrap;
+        `;
+        document.body.appendChild(this.nameTag);
+    }
+    
+    updateNameTag() {
+        if (!this.nameTag || !this.game) return;
+        
+        // Convert 3D position to screen coordinates
+        const vector = this.mesh.position.clone();
+        vector.y += 2.3; // Slightly below speech bubble
+        
+        // Project to screen space
+        vector.project(this.game.camera);
+        
+        const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+        
+        this.nameTag.style.left = `${x}px`;
+        this.nameTag.style.top = `${y}px`;
+        this.nameTag.style.transform = 'translateX(-50%)';
     }
     
     updateSpeechBubble() {
