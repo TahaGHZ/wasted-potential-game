@@ -18,7 +18,7 @@ export class WeatherSystem {
         this.currentWeather = this.WEATHER_TYPES.SUNNY;
         this.nextWeather = null;
         this.weatherTransitionTime = 0;
-        this.weatherDuration = 30; // Weather lasts 30 seconds
+        this.weatherDuration = 300; // Weather lasts 5 minutes (300 seconds)
         this.timeInCurrentWeather = 0;
         
         // Weather effects

@@ -8,7 +8,7 @@ export class DayNightCycle {
         this.scene = scene;
         
         // Time settings (24 hour cycle in seconds)
-        this.dayDuration = 120; // 2 minutes for full day cycle
+        this.dayDuration = 300; // 5 minutes for full day cycle
         this.currentTime = 0.25; // Start at 6 AM (0.25 of 24h cycle)
         this.timeSpeed = 1.0; // Speed multiplier
         

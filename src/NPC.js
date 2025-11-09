@@ -19,6 +19,17 @@ export class NPC {
         
         // Initialize behavior system
         this.behavior = this.initializeBehavior();
+        
+        // Movement system
+        this.targetPosition = null;
+        this.moveSpeed = 2.0; // units per second
+        this.isMoving = false;
+        
+        // Speech system
+        this.speechBubble = null;
+        this.currentSpeech = null;
+        this.speechTimeout = null;
+        this.setupSpeechBubble();
     }
     
     generatePersonality() {
@@ -129,17 +140,107 @@ export class NPC {
     }
     
     update(delta = 0.016) {
-        // Update method for future behaviors
-        // Currently static, but structure is ready for:
-        // - Animation
-        // - State changes
-        // - Interaction logic
-        // - Pathfinding
-        // - Dialogue system
+        // Update movement
+        if (this.targetPosition && this.isMoving) {
+            this.updateMovement(delta);
+        }
         
-        // Example: Update name tag to face camera (simplified)
-        // In a full implementation, this would use the camera position
-        // delta parameter is available for frame-independent animations
+        // Update speech bubble position
+        if (this.speechBubble) {
+            this.updateSpeechBubble();
+        }
+    }
+    
+    updateMovement(delta) {
+        if (!this.targetPosition) return;
+        
+        const direction = this.targetPosition.clone().sub(this.position);
+        const distance = direction.length();
+        
+        if (distance < 0.1) {
+            // Reached target
+            this.position.copy(this.targetPosition);
+            this.mesh.position.copy(this.position);
+            this.targetPosition = null;
+            this.isMoving = false;
+            this.state = 'idle';
+        } else {
+            // Move towards target
+            direction.normalize();
+            const moveDistance = Math.min(this.moveSpeed * delta, distance);
+            this.position.add(direction.multiplyScalar(moveDistance));
+            this.mesh.position.copy(this.position);
+            this.isMoving = true;
+            this.state = 'walking';
+        }
+    }
+    
+    setupSpeechBubble() {
+        // Create speech bubble element
+        this.speechBubble = document.createElement('div');
+        this.speechBubble.id = `npc-speech-${this.id}`;
+        this.speechBubble.style.cssText = `
+            position: absolute;
+            color: white;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 15px;
+            border-radius: 8px;
+            z-index: 100;
+            font-size: 14px;
+            max-width: 200px;
+            text-align: center;
+            display: none;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+        `;
+        document.body.appendChild(this.speechBubble);
+    }
+    
+    updateSpeechBubble() {
+        if (!this.speechBubble || !this.currentSpeech || !this.game) return;
+        
+        // Convert 3D position to screen coordinates
+        const vector = this.mesh.position.clone();
+        vector.y += 2.5; // Above NPC head
+        
+        // Project to screen space
+        vector.project(this.game.camera);
+        
+        const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+        
+        this.speechBubble.style.left = `${x}px`;
+        this.speechBubble.style.top = `${y - 50}px`;
+        this.speechBubble.style.transform = 'translateX(-50%)';
+    }
+    
+    speak(message, duration = 5000) {
+        if (!this.speechBubble) return;
+        
+        this.currentSpeech = message;
+        this.speechBubble.textContent = message;
+        this.speechBubble.style.display = 'block';
+        this.state = 'talking';
+        
+        // Clear existing timeout
+        if (this.speechTimeout) {
+            clearTimeout(this.speechTimeout);
+        }
+        
+        // Hide after duration
+        this.speechTimeout = setTimeout(() => {
+            this.speechBubble.style.display = 'none';
+            this.currentSpeech = null;
+            if (this.state === 'talking') {
+                this.state = 'idle';
+            }
+        }, duration);
+    }
+    
+    setTargetPosition(position) {
+        this.targetPosition = position.clone();
+        this.isMoving = true;
     }
     
     // Methods for future implementation
@@ -222,12 +323,29 @@ export class NPC {
             }
         }
         
+        // Trigger agent event
+        if (this.agent) {
+            console.log(`[NPC ${this.id}] Triggering agent processEvent('hit')...`);
+            this.agent.processEvent('hit', { thrower: thrower });
+            console.log(`[NPC ${this.id}] Agent processEvent('hit') called`);
+        } else {
+            console.warn(`[NPC ${this.id}] No agent found to process hit event`);
+        }
+        
         // Reset state after a short delay (could be handled in update method)
         setTimeout(() => {
             if (this.state === 'hit') {
                 this.state = 'idle';
             }
         }, 1000);
+    }
+    
+    setAgent(agent) {
+        this.agent = agent;
+    }
+    
+    setGame(game) {
+        this.game = game;
     }
 }
 

@@ -9,6 +9,8 @@ import { Inventory } from './Inventory.js';
 import { ProjectileSystem } from './ProjectileSystem.js';
 import { Rock } from './Rock.js';
 import { SpeechToText } from './SpeechToText.js';
+import { NPCAgent } from './NPCAgent.js';
+import { NPCMemory } from './NPCMemory.js';
 
 class Game {
     constructor() {
@@ -316,25 +318,62 @@ class Game {
     }
     
     sendToNearbyNPCs(transcript) {
+        console.log(`[Game] sendToNearbyNPCs called with transcript: "${transcript}"`);
+        
         // Get player position (camera position)
         const playerPosition = this.camera.position;
         const interactionRange = 5.0; // Range for NPC interaction
         
+        console.log(`[Game] Player position: (${playerPosition.x.toFixed(2)}, ${playerPosition.y.toFixed(2)}, ${playerPosition.z.toFixed(2)})`);
+        console.log(`[Game] Total NPCs: ${this.npcs.length}`);
+        
         // Find nearby NPCs
         const nearbyNPCs = this.npcs.filter(npc => {
-            if (!npc.position) return false;
+            if (!npc.position) {
+                console.log(`[Game] NPC ${npc.id}: No position`);
+                return false;
+            }
             const distance = playerPosition.distanceTo(npc.position);
-            return distance <= interactionRange;
+            const inRange = distance <= interactionRange;
+            console.log(`[Game] NPC ${npc.id}: Distance ${distance.toFixed(2)}, In range: ${inRange}`);
+            return inRange;
         });
         
         if (nearbyNPCs.length > 0) {
-            console.log(`Sending transcript to ${nearbyNPCs.length} nearby NPC(s):`, transcript);
-            // TODO: Implement NPC response system
+            console.log(`[Game] Sending transcript to ${nearbyNPCs.length} nearby NPC(s):`, transcript);
+            
+            // Send to each nearby NPC's agent
             nearbyNPCs.forEach(npc => {
-                console.log(`  - NPC ${npc.id} at distance ${playerPosition.distanceTo(npc.position).toFixed(2)}`);
+                const distance = playerPosition.distanceTo(npc.position).toFixed(2);
+                console.log(`[Game] Processing NPC ${npc.id} at distance ${distance}`);
+                
+                // Check if agent exists
+                if (!npc.agent) {
+                    console.error(`[Game] NPC ${npc.id}: No agent found!`);
+                    return;
+                }
+                
+                console.log(`[Game] NPC ${npc.id}: Agent found`);
+                
+                // Check if memory exists
+                if (!npc.agent.memory) {
+                    console.error(`[Game] NPC ${npc.id}: No memory found!`);
+                    return;
+                }
+                
+                console.log(`[Game] NPC ${npc.id}: Memory found, adding conversation...`);
+                
+                // Add to memory
+                npc.agent.memory.addConversation('user', transcript);
+                console.log(`[Game] NPC ${npc.id}: Conversation added to memory`);
+                
+                // Trigger agent processing
+                console.log(`[Game] NPC ${npc.id}: Triggering processEvent('player_query')...`);
+                npc.agent.processEvent('player_query', { transcript: transcript });
+                console.log(`[Game] NPC ${npc.id}: processEvent called`);
             });
         } else {
-            console.log('No NPCs in range to receive transcript');
+            console.log(`[Game] No NPCs in range to receive transcript`);
         }
     }
     
@@ -365,21 +404,58 @@ class Game {
         // Spawn 1 merchant NPC behind the counter at the merchant place
         // Merchant place is at (10, 0, 10), counter is at z = -1.5 relative to merchant place
         // So merchant should be at z = -0.5 (behind counter) relative to merchant place
-        const merchantPosition = new THREE.Vector3(10, 0, 9.5); // Behind the counter
+        // const merchantPosition = new THREE.Vector3(10, 0, 9.5); // Behind the counter
         
-        const merchant = new NPC(this.scene, merchantPosition, 0, this.environmentManager);
-        this.npcs.push(merchant);
+        // const merchant = new NPC(this.scene, merchantPosition, 0, this.environmentManager);
+        // this.npcs.push(merchant);
         
         // Spawn 2 NPCs near trees
         // Tree positions: (-15, 15), (20, -10), (-20, -15), (15, 20), (-10, 25), (25, 10), (-25, -5)
         const npc1Position = new THREE.Vector3(-12, 0, 12); // Near tree at (-15, 15)
-        const npc2Position = new THREE.Vector3(17, 0, -7); // Near tree at (20, -10)
+        // const npc2Position = new THREE.Vector3(17, 0, -7); // Near tree at (20, -10)
         
         const npc1 = new NPC(this.scene, npc1Position, 1, this.environmentManager);
-        const npc2 = new NPC(this.scene, npc2Position, 2, this.environmentManager);
+        // const npc2 = new NPC(this.scene, npc2Position, 2, this.environmentManager);
         
         this.npcs.push(npc1);
-        this.npcs.push(npc2);
+        // this.npcs.push(npc2);
+        
+        // Set up AI agents for NPCs (after adding to array)
+        this.setupNPCAgents();
+    }
+    
+    setupNPCAgents() {
+        console.log(`[Game] Setting up AI agents for ${this.npcs.length} NPC(s)`);
+        
+        // Initialize agents for all NPCs
+        this.npcs.forEach(npc => {
+            console.log(`[Game] Initializing agent for NPC ${npc.id}...`);
+            
+            // Set game reference
+            npc.setGame(this);
+            console.log(`[Game] NPC ${npc.id}: Game reference set`);
+            
+            // Create memory
+            const memory = new NPCMemory(npc.id);
+            console.log(`[Game] NPC ${npc.id}: Memory created`);
+            
+            // Create agent
+            const agent = new NPCAgent(npc, this, memory);
+            console.log(`[Game] NPC ${npc.id}: Agent created`);
+            
+            // Link agent to NPC
+            npc.setAgent(agent);
+            console.log(`[Game] NPC ${npc.id}: Agent linked to NPC`);
+            
+            // Verify agent is set
+            if (npc.agent) {
+                console.log(`[Game] NPC ${npc.id}: Agent verified, ready to process events`);
+            } else {
+                console.error(`[Game] NPC ${npc.id}: Agent NOT set!`);
+            }
+        });
+        
+        console.log(`[Game] Agent setup complete for ${this.npcs.length} NPC(s)`);
     }
     
     onWindowResize() {
@@ -398,7 +474,15 @@ class Game {
         const clampedDelta = Math.min(delta, 0.1);
         
         // Update environment manager (day/night, weather, birds)
+        if (!this.previousEnvState) {
+            this.previousEnvState = this.environmentManager.getState();
+        }
         this.environmentManager.update(clampedDelta);
+        const currentEnvState = this.environmentManager.getState();
+        
+        // Check for environment changes and notify NPCs
+        this.checkEnvironmentChanges(this.previousEnvState, currentEnvState);
+        this.previousEnvState = currentEnvState;
         
         // Update weather display
         this.updateWeatherDisplay();
@@ -568,6 +652,52 @@ class Game {
      */
     getInventory() {
         return this.inventory.getState();
+    }
+    
+    /**
+     * Check for environment changes and notify NPCs
+     */
+    checkEnvironmentChanges(previousState, currentState) {
+        if (!previousState || !currentState) {
+            console.log(`[Game] checkEnvironmentChanges: Missing state data`);
+            return;
+        }
+        
+        // Check weather change
+        if (previousState.weather !== currentState.weather) {
+            console.log(`[Game] Weather change detected: ${previousState.weather} -> ${currentState.weather}`);
+            this.npcs.forEach(npc => {
+                if (npc.agent) {
+                    console.log(`[Game] Notifying NPC ${npc.id} of weather change`);
+                    npc.agent.processEvent('environment_change', {
+                        change: 'weather',
+                        details: `Weather changed from ${previousState.weather} to ${currentState.weather}`,
+                        previous: previousState.weather,
+                        current: currentState.weather
+                    });
+                } else {
+                    console.warn(`[Game] NPC ${npc.id} has no agent for weather change notification`);
+                }
+            });
+        }
+        
+        // Check time of day change
+        if (previousState.timeOfDay !== currentState.timeOfDay) {
+            console.log(`[Game] Time of day change detected: ${previousState.timeOfDay} -> ${currentState.timeOfDay}`);
+            this.npcs.forEach(npc => {
+                if (npc.agent) {
+                    console.log(`[Game] Notifying NPC ${npc.id} of time change`);
+                    npc.agent.processEvent('environment_change', {
+                        change: 'time_of_day',
+                        details: `Time changed from ${previousState.timeOfDay} to ${currentState.timeOfDay}`,
+                        previous: previousState.timeOfDay,
+                        current: currentState.timeOfDay
+                    });
+                } else {
+                    console.warn(`[Game] NPC ${npc.id} has no agent for time change notification`);
+                }
+            });
+        }
     }
 }
 
