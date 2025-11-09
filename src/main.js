@@ -8,6 +8,7 @@ import { InteractionSystem } from './InteractionSystem.js';
 import { Inventory } from './Inventory.js';
 import { ProjectileSystem } from './ProjectileSystem.js';
 import { Rock } from './Rock.js';
+import { SpeechToText } from './SpeechToText.js';
 
 class Game {
     constructor() {
@@ -90,6 +91,11 @@ class Game {
         
         // Setup keyboard listeners for throwing rocks
         this.setupThrowListener();
+        
+        // Speech-to-text system
+        this.speechToText = new SpeechToText();
+        this.setupSpeechToText();
+        this.setupSpeechUI();
         
         // Listen for rock collection
         document.addEventListener('interactionResult', (event) => {
@@ -180,6 +186,156 @@ class Game {
                 this.throwRock();
             }
         });
+    }
+    
+    setupSpeechToText() {
+        // Set up real-time transcript callback
+        this.speechToText.onTranscript((transcript, interim) => {
+            this.updateSpeechCaption(transcript, interim);
+        });
+        
+        // Set up final transcript callback
+        this.speechToText.onFinal((finalTranscript) => {
+            this.handleFinalTranscript(finalTranscript);
+        });
+        
+        // Set up V key listener
+        let vKeyPressed = false;
+        
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'KeyV' && !vKeyPressed) {
+                vKeyPressed = true;
+                this.startSpeaking();
+            }
+        });
+        
+        document.addEventListener('keyup', (event) => {
+            if (event.code === 'KeyV' && vKeyPressed) {
+                vKeyPressed = false;
+                this.stopSpeaking();
+            }
+        });
+    }
+    
+    setupSpeechUI() {
+        // Create speech caption display element
+        let speechDisplay = document.getElementById('speech-caption');
+        if (!speechDisplay) {
+            speechDisplay = document.createElement('div');
+            speechDisplay.id = 'speech-caption';
+            speechDisplay.style.cssText = `
+                position: absolute;
+                bottom: 100px;
+                left: 50%;
+                transform: translateX(-50%);
+                color: white;
+                background: rgba(0, 0, 0, 0.8);
+                padding: 15px 25px;
+                border-radius: 8px;
+                z-index: 100;
+                font-size: 18px;
+                max-width: 80%;
+                text-align: center;
+                display: none;
+                font-family: Arial, sans-serif;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            `;
+            document.body.appendChild(speechDisplay);
+        }
+        
+        this.speechCaption = speechDisplay;
+    }
+    
+    startSpeaking() {
+        if (this.speechToText.startListening()) {
+            this.speechCaption.style.display = 'block';
+            this.speechCaption.textContent = '🎤 Listening...';
+            this.speechCaption.style.background = 'rgba(0, 150, 0, 0.8)'; // Green when listening
+        } else {
+            this.speechCaption.style.display = 'block';
+            this.speechCaption.textContent = '❌ Microphone not available';
+            this.speechCaption.style.background = 'rgba(150, 0, 0, 0.8)'; // Red for error
+            setTimeout(() => {
+                this.speechCaption.style.display = 'none';
+            }, 2000);
+        }
+    }
+    
+    stopSpeaking() {
+        this.speechToText.stopListening();
+        // Caption will be updated by the transcript callback
+    }
+    
+    updateSpeechCaption(transcript, interim) {
+        if (!this.speechCaption) return;
+        
+        if (transcript.trim() === '') {
+            this.speechCaption.textContent = '🎤 Listening...';
+        } else {
+            // Show transcript with visual indicator for interim results
+            let displayText = transcript;
+            if (interim && interim.trim() !== '') {
+                displayText += '...'; // Indicate interim results
+            }
+            this.speechCaption.textContent = displayText;
+        }
+        
+        // Update background color based on state
+        if (this.speechToText.getIsListening()) {
+            this.speechCaption.style.background = 'rgba(0, 150, 0, 0.8)'; // Green when listening
+        } else {
+            this.speechCaption.style.background = 'rgba(0, 0, 0, 0.8)'; // Black when processing
+        }
+    }
+    
+    handleFinalTranscript(finalTranscript) {
+        if (!finalTranscript || finalTranscript.trim() === '') {
+            // No speech detected
+            this.speechCaption.textContent = 'No speech detected';
+            this.speechCaption.style.background = 'rgba(100, 100, 100, 0.8)';
+            setTimeout(() => {
+                this.speechCaption.style.display = 'none';
+            }, 1500);
+            return;
+        }
+        
+        // Log the final transcript
+        console.log('Final transcript:', finalTranscript);
+        
+        // Show final transcript briefly
+        this.speechCaption.textContent = finalTranscript;
+        this.speechCaption.style.background = 'rgba(0, 0, 0, 0.8)';
+        
+        // Hide caption after a delay
+        setTimeout(() => {
+            this.speechCaption.style.display = 'none';
+        }, 3000);
+        
+        // TODO: Send to in-range NPCs
+        this.sendToNearbyNPCs(finalTranscript);
+    }
+    
+    sendToNearbyNPCs(transcript) {
+        // Get player position (camera position)
+        const playerPosition = this.camera.position;
+        const interactionRange = 5.0; // Range for NPC interaction
+        
+        // Find nearby NPCs
+        const nearbyNPCs = this.npcs.filter(npc => {
+            if (!npc.position) return false;
+            const distance = playerPosition.distanceTo(npc.position);
+            return distance <= interactionRange;
+        });
+        
+        if (nearbyNPCs.length > 0) {
+            console.log(`Sending transcript to ${nearbyNPCs.length} nearby NPC(s):`, transcript);
+            // TODO: Implement NPC response system
+            nearbyNPCs.forEach(npc => {
+                console.log(`  - NPC ${npc.id} at distance ${playerPosition.distanceTo(npc.position).toFixed(2)}`);
+            });
+        } else {
+            console.log('No NPCs in range to receive transcript');
+        }
     }
     
     throwRock() {
