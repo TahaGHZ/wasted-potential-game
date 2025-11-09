@@ -42,11 +42,18 @@ class Game {
         // Environment manager (day/night, weather, birds)
         this.environmentManager = new EnvironmentManager(this.scene, this.camera);
         
-        // Weather display element
+        // Weather display elements
         this.weatherDisplay = {
-            type: document.getElementById('weather-type'),
-            details: document.getElementById('weather-details'),
-            icon: document.querySelector('.weather-icon')
+            current: {
+                icon: document.getElementById('weather-icon-current'),
+                type: document.getElementById('weather-type-current')
+            },
+            next: {
+                icon: document.getElementById('weather-icon-next'),
+                type: document.getElementById('weather-type-next')
+            },
+            progressFill: document.getElementById('weather-progress-fill'),
+            progressText: document.getElementById('weather-progress-text')
         };
         
         // Time display element
@@ -163,44 +170,38 @@ class Game {
         
         if (!envState) return;
         
-        // Update weather type
-        const weatherType = envState.weather;
+        // Weather names and icons
         const weatherNames = {
             'sunny': 'Sunny',
             'rainy': 'Rainy',
             'windy+foggy': 'Windy & Foggy'
         };
         
-        this.weatherDisplay.type.textContent = weatherNames[weatherType] || weatherType;
-        
-        // Update weather icon
         const weatherIcons = {
             'sunny': '☀️',
             'rainy': '🌧️',
             'windy+foggy': '🌫️'
         };
         
-        this.weatherDisplay.icon.textContent = weatherIcons[weatherType] || '☀️';
+        // Update current weather
+        const currentWeather = envState.weather;
+        this.weatherDisplay.current.icon.textContent = weatherIcons[currentWeather] || '☀️';
+        this.weatherDisplay.current.type.textContent = weatherNames[currentWeather] || currentWeather;
         
-        // Update weather details
-        const details = [];
-        if (envState.isRaining) {
-            details.push('Rain falling');
-        }
-        if (envState.isFoggy) {
-            details.push('Dense fog');
-        }
-        if (envState.isWindy) {
-            details.push(`Wind: ${(envState.windSpeed * 10).toFixed(1)} km/h`);
-        }
-        if (envState.visibility < 1.0) {
-            details.push(`Visibility: ${(envState.visibility * 100).toFixed(0)}%`);
-        }
-        if (details.length === 0) {
-            details.push('Clear skies');
-        }
+        // Update next weather
+        const nextWeather = envState.nextWeather || currentWeather;
+        this.weatherDisplay.next.icon.textContent = weatherIcons[nextWeather] || '☀️';
+        this.weatherDisplay.next.type.textContent = weatherNames[nextWeather] || nextWeather;
         
-        this.weatherDisplay.details.textContent = details.join(' • ');
+        // Update progress bar
+        const progress = envState.weatherProgress || 0;
+        const progressPercent = Math.min(100, Math.max(0, progress * 100));
+        this.weatherDisplay.progressFill.style.width = `${progressPercent}%`;
+        
+        // Update progress text (time remaining)
+        const timeRemaining = envState.timeRemaining || 0;
+        const secondsRemaining = Math.ceil(timeRemaining);
+        this.weatherDisplay.progressText.textContent = `${secondsRemaining}s remaining`;
     }
     
     updateTimeDisplay() {

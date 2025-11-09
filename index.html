@@ -74,6 +74,49 @@
             font-size: 18px;
         }
         
+        #weather-display .weather-section {
+            margin: 10px 0;
+        }
+        
+        #weather-display .weather-section-title {
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+        
+        #weather-display .weather-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+        
+        #weather-display .progress-container {
+            margin-top: 10px;
+            width: 100%;
+        }
+        
+        #weather-display .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        
+        #weather-display .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4a90e2, #5ba3f5);
+            transition: width 0.1s linear;
+            border-radius: 4px;
+        }
+        
+        #weather-display .progress-text {
+            font-size: 11px;
+            color: #aaa;
+            margin-top: 3px;
+        }
+        
         #time-display {
             position: absolute;
             top: 20px;
@@ -85,7 +128,7 @@
             z-index: 100;
             font-size: 14px;
             min-width: 150px;
-            margin-top: 180px;
+            margin-top: 200px;
         }
         
         #time-display h3 {
@@ -114,12 +157,28 @@
     </div>
     <div id="weather-display">
         <h3>Weather</h3>
-        <div class="weather-info">
-            <span class="weather-icon">☀️</span>
-            <span id="weather-type">Sunny</span>
+        
+        <div class="weather-section">
+            <div class="weather-section-title">Current</div>
+            <div class="weather-item">
+                <span class="weather-icon" id="weather-icon-current">☀️</span>
+                <span id="weather-type-current">Sunny</span>
+            </div>
         </div>
-        <div class="weather-info">
-            <span id="weather-details">Clear skies</span>
+        
+        <div class="weather-section">
+            <div class="weather-section-title">Next</div>
+            <div class="weather-item">
+                <span class="weather-icon" id="weather-icon-next">☀️</span>
+                <span id="weather-type-next">Sunny</span>
+            </div>
+        </div>
+        
+        <div class="progress-container">
+            <div class="progress-bar">
+                <div class="progress-fill" id="weather-progress-fill"></div>
+            </div>
+            <div class="progress-text" id="weather-progress-text">30s remaining</div>
         </div>
     </div>
     <div id="time-display">

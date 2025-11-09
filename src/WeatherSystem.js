@@ -16,6 +16,7 @@ export class WeatherSystem {
         };
         
         this.currentWeather = this.WEATHER_TYPES.SUNNY;
+        this.nextWeather = null;
         this.weatherTransitionTime = 0;
         this.weatherDuration = 30; // Weather lasts 30 seconds
         this.timeInCurrentWeather = 0;
@@ -31,6 +32,8 @@ export class WeatherSystem {
         
         // Start with random weather
         this.transitionToRandomWeather();
+        // Set initial next weather
+        this.getNextWeather();
     }
     
     setupFog() {
@@ -71,6 +74,8 @@ export class WeatherSystem {
         if (this.timeInCurrentWeather >= this.weatherDuration) {
             this.transitionToRandomWeather();
             this.timeInCurrentWeather = 0;
+            // Calculate next weather for the new current weather
+            this.getNextWeather();
         }
         
         // Update weather effects
@@ -167,8 +172,37 @@ export class WeatherSystem {
     
     transitionToRandomWeather() {
         const weathers = Object.values(this.WEATHER_TYPES);
-        const randomWeather = weathers[Math.floor(Math.random() * weathers.length)];
+        // Pick a random weather that's different from current
+        let randomWeather;
+        do {
+            randomWeather = weathers[Math.floor(Math.random() * weathers.length)];
+        } while (randomWeather === this.currentWeather && weathers.length > 1);
+        
+        // Set the new current weather
         this.setWeather(randomWeather);
+        // Next weather will be calculated after this transition
+        this.nextWeather = null;
+    }
+    
+    getNextWeather() {
+        // If next weather not set, calculate it now
+        if (!this.nextWeather) {
+            const weathers = Object.values(this.WEATHER_TYPES);
+            let randomWeather;
+            do {
+                randomWeather = weathers[Math.floor(Math.random() * weathers.length)];
+            } while (randomWeather === this.currentWeather && weathers.length > 1);
+            this.nextWeather = randomWeather;
+        }
+        return this.nextWeather;
+    }
+    
+    getTimeRemaining() {
+        return Math.max(0, this.weatherDuration - this.timeInCurrentWeather);
+    }
+    
+    getProgress() {
+        return Math.min(1, this.timeInCurrentWeather / this.weatherDuration);
     }
     
     setWeather(weatherType) {

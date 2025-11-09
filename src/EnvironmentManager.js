@@ -107,7 +107,11 @@ export class EnvironmentManager {
             isDay: this.state.timeOfDay === 'day',
             isNight: this.state.timeOfDay === 'night',
             isDawn: this.state.timeOfDay === 'dawn',
-            isDusk: this.state.timeOfDay === 'dusk'
+            isDusk: this.state.timeOfDay === 'dusk',
+            // Weather transition info
+            nextWeather: this.weatherSystem.getNextWeather(),
+            timeRemaining: this.weatherSystem.getTimeRemaining(),
+            weatherProgress: this.weatherSystem.getProgress()
         };
     }
     
