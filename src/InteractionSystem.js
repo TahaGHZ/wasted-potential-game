@@ -24,7 +24,11 @@ export class InteractionSystem {
         document.addEventListener('keydown', (event) => {
             if (event.code === 'KeyF') {
                 this.interactionKeyPressed = true;
-                this.attemptInteraction();
+                const result = this.attemptInteraction();
+                // Trigger custom event for rock collection
+                if (result !== null && result !== undefined) {
+                    document.dispatchEvent(new CustomEvent('interactionResult', { detail: result }));
+                }
             }
         });
         
@@ -77,9 +81,11 @@ export class InteractionSystem {
             if (this.currentInteractable.toggle) {
                 this.currentInteractable.toggle();
             } else if (this.currentInteractable.interact) {
-                this.currentInteractable.interact();
+                const result = this.currentInteractable.interact();
+                return result; // Return result for rock collection
             }
         }
+        return null;
     }
     
     getCurrentInteractable() {

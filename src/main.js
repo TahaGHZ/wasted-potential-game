@@ -5,6 +5,9 @@ import { EnvironmentManager } from './EnvironmentManager.js';
 import { NPC } from './NPC.js';
 import { Lamp } from './Lamp.js';
 import { InteractionSystem } from './InteractionSystem.js';
+import { Inventory } from './Inventory.js';
+import { ProjectileSystem } from './ProjectileSystem.js';
+import { Rock } from './Rock.js';
 
 class Game {
     constructor() {
@@ -65,13 +68,36 @@ class Game {
         // Interaction system
         this.interactionSystem = new InteractionSystem(this.camera, this.scene);
         
+        // Inventory system
+        this.inventory = new Inventory();
+        this.setupInventoryUI();
+        
+        // Projectile system
+        this.projectileSystem = new ProjectileSystem(this.scene);
+        // Enable debug mode for collision detection (set to false in production)
+        this.projectileSystem.debug = true; // Set to false to disable debug logs
+        
         // Lamps
         this.lamps = [];
         this.createLamps();
         
+        // Register rocks with interaction system
+        this.registerRocks();
+        
         // NPCs
         this.npcs = [];
         this.spawnNPCs();
+        
+        // Setup keyboard listeners for throwing rocks
+        this.setupThrowListener();
+        
+        // Listen for rock collection
+        document.addEventListener('interactionResult', (event) => {
+            if (event.detail === true) {
+                // Rock was collected
+                this.inventory.addRocks(1);
+            }
+        });
         
         // Handle window resize
         window.addEventListener('resize', () => this.onWindowResize());
@@ -105,6 +131,78 @@ class Game {
             // Register with interaction system
             this.interactionSystem.registerInteractable(lamp);
         });
+    }
+    
+    registerRocks() {
+        // Register all rocks with interaction system
+        const rocks = this.environment.getRocks();
+        rocks.forEach(rock => {
+            this.interactionSystem.registerInteractable(rock);
+        });
+    }
+    
+    setupInventoryUI() {
+        // Create inventory display element if it doesn't exist
+        let inventoryDisplay = document.getElementById('inventory-display');
+        if (!inventoryDisplay) {
+            inventoryDisplay = document.createElement('div');
+            inventoryDisplay.id = 'inventory-display';
+            inventoryDisplay.style.cssText = `
+                position: absolute;
+                bottom: 20px;
+                left: 20px;
+                color: white;
+                background: rgba(0, 0, 0, 0.7);
+                padding: 15px;
+                border-radius: 8px;
+                z-index: 100;
+                font-size: 14px;
+                min-width: 150px;
+            `;
+            document.body.appendChild(inventoryDisplay);
+        }
+        
+        this.inventoryDisplay = inventoryDisplay;
+        this.inventoryDisplay.innerHTML = '<h3>Inventory</h3><div id="rock-count">Rocks: 0</div>';
+        
+        // Update inventory display when inventory changes
+        this.inventory.onChange((state) => {
+            const rockCountEl = document.getElementById('rock-count');
+            if (rockCountEl) {
+                rockCountEl.textContent = `Rocks: ${state.rocks}`;
+            }
+        });
+    }
+    
+    setupThrowListener() {
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'KeyG') {
+                this.throwRock();
+            }
+        });
+    }
+    
+    throwRock() {
+        // Get camera direction
+        const direction = new THREE.Vector3();
+        this.camera.getWorldDirection(direction);
+        
+        // Start position (slightly in front of camera)
+        const startPosition = this.camera.position.clone();
+        startPosition.add(direction.multiplyScalar(0.5));
+        startPosition.y += 0.2; // Slightly above camera
+        
+        // Normalize direction again after multiplication
+        direction.normalize();
+        
+        // Throw speed
+        const speed = 15;
+        
+        // Create projectile (player is thrower)
+        const player = { id: 'player', type: 'player' };
+        
+        // Use throwRockAt with inventory check for player
+        this.throwRockAt(startPosition, direction, speed, player, true);
     }
     
     spawnNPCs() {
@@ -154,6 +252,10 @@ class Game {
         
         // Update interaction system
         this.interactionSystem.update();
+        
+        // Update projectile system
+        const hits = this.projectileSystem.update(clampedDelta, this.npcs);
+        this.handleProjectileHits(hits);
         
         // Update controller with actual delta time
         this.controller.update(clampedDelta);
@@ -237,6 +339,18 @@ class Game {
         return this.interactionSystem.getInteractables();
     }
     
+    handleProjectileHits(hits) {
+        // Handle projectile hits on NPCs
+        if (hits && hits.length > 0) {
+            hits.forEach(hit => {
+                if (hit.npc && hit.npc.onHit) {
+                    // onHit is already called in ProjectileSystem, but we can add additional handling here
+                    console.log(`Hit detected: NPC ${hit.npc.id} hit by ${hit.projectile.thrower?.id || 'unknown'}`);
+                }
+            });
+        }
+    }
+    
     /**
      * Interact with a lamp (for NPC use)
      * @param {number} lampIndex - Index of the lamp (0 or 1)
@@ -245,6 +359,59 @@ class Game {
         if (this.lamps[lampIndex]) {
             this.lamps[lampIndex].toggle();
         }
+    }
+    
+    /**
+     * Collect a rock (for NPC use)
+     * @param {Object} rock - Rock instance to collect
+     * @returns {boolean} - True if successful
+     */
+    collectRock(rock) {
+        if (rock && rock.collect && rock.collect()) {
+            this.inventory.addRocks(1);
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * Throw a rock (for NPC use)
+     * @param {THREE.Vector3} startPosition - Starting position
+     * @param {THREE.Vector3} direction - Direction vector (normalized)
+     * @param {number} speed - Throw speed
+     * @param {Object} thrower - Thrower object (NPC or player)
+     * @param {boolean} checkInventory - Whether to check inventory (default: true for player, false for NPCs)
+     * @returns {boolean} - True if successful
+     */
+    throwRockAt(startPosition, direction, speed = 15, thrower = null, checkInventory = true) {
+        // For NPCs, skip inventory check (they can throw rocks they've collected)
+        // For player, check inventory
+        if (checkInventory) {
+            if (!this.inventory.hasRocks(1)) {
+                return false;
+            }
+            
+            if (!this.inventory.removeRocks(1)) {
+                return false;
+            }
+        }
+        
+        this.projectileSystem.throwRock(startPosition, direction, speed, thrower);
+        return true;
+    }
+    
+    /**
+     * Get available rocks in the environment (for NPC use)
+     */
+    getAvailableRocks() {
+        return this.environment.getRocks();
+    }
+    
+    /**
+     * Get inventory state (for NPC use)
+     */
+    getInventory() {
+        return this.inventory.getState();
     }
 }
 
@@ -255,4 +422,12 @@ const game = new Game();
 window.getTime = () => game.getTime();
 window.getInteractables = () => game.getInteractables();
 window.interactWithLamp = (lampIndex) => game.interactWithLamp(lampIndex);
+window.collectRock = (rock) => game.collectRock(rock);
+window.throwRockAt = (startPosition, direction, speed, thrower, checkInventory = false) => {
+    const pos = new THREE.Vector3(startPosition.x, startPosition.y, startPosition.z);
+    const dir = new THREE.Vector3(direction.x, direction.y, direction.z).normalize();
+    return game.throwRockAt(pos, dir, speed, thrower, checkInventory);
+};
+window.getAvailableRocks = () => game.getAvailableRocks();
+window.getInventory = () => game.getInventory();
 

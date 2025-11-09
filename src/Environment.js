@@ -1,12 +1,21 @@
 import * as THREE from 'three';
+import { Rock } from './Rock.js';
 
 export class Environment {
     constructor(scene) {
         this.scene = scene;
+        this.rocks = []; // Store rock instances
         this.createHut();
         this.createTrees();
         this.createBushes();
         this.createRocks();
+    }
+    
+    /**
+     * Get all rock instances (for LLM/NPC access)
+     */
+    getRocks() {
+        return this.rocks.filter(rock => !rock.isCollected);
     }
     
     createHut() {
@@ -213,38 +222,10 @@ export class Environment {
         
         positions.forEach((pos, index) => {
             if (index < rockCount) {
-                this.createRock(pos.x, pos.z);
+                const rock = new Rock(this.scene, new THREE.Vector3(pos.x, 0, pos.z));
+                this.rocks.push(rock);
             }
         });
-    }
-    
-    createRock(x, z) {
-        const rockGroup = new THREE.Group();
-        
-        const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x696969 });
-        
-        // Create irregular rock shape with multiple boxes
-        for (let i = 0; i < 2; i++) {
-            const size = 0.3 + Math.random() * 0.2;
-            const rockGeometry = new THREE.BoxGeometry(size, size * 0.6, size);
-            const rock = new THREE.Mesh(rockGeometry, rockMaterial);
-            rock.position.set(
-                (Math.random() - 0.5) * 0.5,
-                size * 0.3,
-                (Math.random() - 0.5) * 0.5
-            );
-            rock.rotation.set(
-                Math.random() * Math.PI * 0.2,
-                Math.random() * Math.PI * 0.2,
-                Math.random() * Math.PI * 0.2
-            );
-            rock.castShadow = true;
-            rock.receiveShadow = true;
-            rockGroup.add(rock);
-        }
-        
-        rockGroup.position.set(x, 0, z);
-        this.scene.add(rockGroup);
     }
 }
 

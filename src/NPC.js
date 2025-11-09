@@ -37,7 +37,8 @@ export class NPC {
             health: 100,
             stamina: 100,
             level: 1,
-            experience: 0
+            experience: 0,
+            hitCount: 0 // Track number of times hit
         };
     }
     
@@ -189,6 +190,44 @@ export class NPC {
             attributes: this.attributes,
             environment: this.getEnvironmentState()
         };
+    }
+    
+    /**
+     * Handle being hit by a projectile
+     * @param {Object} thrower - Object that threw the projectile
+     */
+    onHit(thrower) {
+        // Increment hit count
+        if (this.attributes) {
+            this.attributes.hitCount = (this.attributes.hitCount || 0) + 1;
+        }
+        
+        // Change state to indicate being hit
+        this.state = 'hit';
+        
+        // Log hit for debugging/LLM context
+        console.log(`NPC ${this.id} hit by ${thrower?.id || 'unknown'} at position (${this.position.x.toFixed(2)}, ${this.position.y.toFixed(2)}, ${this.position.z.toFixed(2)})`);
+        
+        // Visual feedback: briefly change color or add effect
+        if (this.mesh && this.mesh.children && this.mesh.children.length > 0) {
+            const body = this.mesh.children.find(child => child.material && child.material.color);
+            if (body && body.material) {
+                const originalColor = body.material.color.clone();
+                body.material.color.setHex(0xff0000); // Red flash
+                setTimeout(() => {
+                    if (body.material) {
+                        body.material.color.copy(originalColor);
+                    }
+                }, 200);
+            }
+        }
+        
+        // Reset state after a short delay (could be handled in update method)
+        setTimeout(() => {
+            if (this.state === 'hit') {
+                this.state = 'idle';
+            }
+        }, 1000);
     }
 }
 
