@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { FirstPersonController } from './FirstPersonController.js';
 import { Environment } from './Environment.js';
+import { EnvironmentManager } from './EnvironmentManager.js';
 import { NPC } from './NPC.js';
 
 class Game {
     constructor() {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x87CEEB); // Sky blue
-        this.scene.fog = new THREE.Fog(0x87CEEB, 50, 200);
+        this.scene.background = new THREE.Color(0x87CEEB); // Sky blue (will be updated by day/night cycle)
         
         // Clock for delta time tracking
         this.clock = new THREE.Clock();
@@ -28,17 +28,30 @@ class Game {
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.getElementById('canvas-container').appendChild(this.renderer.domElement);
         
-        // Lighting
-        this.setupLighting();
-        
         // Ground
         this.createGround();
         
         // First-person controller
         this.controller = new FirstPersonController(this.camera, this.renderer.domElement);
         
-        // Environment
+        // Static environment (hut, trees, bushes, rocks)
         this.environment = new Environment(this.scene);
+        
+        // Environment manager (day/night, weather, birds)
+        this.environmentManager = new EnvironmentManager(this.scene, this.camera);
+        
+        // Weather display element
+        this.weatherDisplay = {
+            type: document.getElementById('weather-type'),
+            details: document.getElementById('weather-details'),
+            icon: document.querySelector('.weather-icon')
+        };
+        
+        // Time display element
+        this.timeDisplay = {
+            text: document.getElementById('time-text'),
+            timeOfDay: document.getElementById('time-of-day')
+        };
         
         // NPCs
         this.npcs = [];
@@ -49,26 +62,6 @@ class Game {
         
         // Start game loop
         this.animate();
-    }
-    
-    setupLighting() {
-        // Ambient light
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        this.scene.add(ambientLight);
-        
-        // Directional light (sun)
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(50, 100, 50);
-        directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
-        directionalLight.shadow.camera.near = 0.5;
-        directionalLight.shadow.camera.far = 500;
-        directionalLight.shadow.camera.left = -100;
-        directionalLight.shadow.camera.right = 100;
-        directionalLight.shadow.camera.top = 100;
-        directionalLight.shadow.camera.bottom = -100;
-        this.scene.add(directionalLight);
     }
     
     createGround() {
@@ -91,7 +84,7 @@ class Game {
         ];
         
         spawnPositions.forEach((position, index) => {
-            const npc = new NPC(this.scene, position, index);
+            const npc = new NPC(this.scene, position, index, this.environmentManager);
             this.npcs.push(npc);
         });
     }
@@ -111,6 +104,15 @@ class Game {
         // Cap delta to prevent large jumps (e.g., when tab is inactive)
         const clampedDelta = Math.min(delta, 0.1);
         
+        // Update environment manager (day/night, weather, birds)
+        this.environmentManager.update(clampedDelta);
+        
+        // Update weather display
+        this.updateWeatherDisplay();
+        
+        // Update time display
+        this.updateTimeDisplay();
+        
         // Update controller with actual delta time
         this.controller.update(clampedDelta);
         
@@ -120,8 +122,82 @@ class Game {
         // Render
         this.renderer.render(this.scene, this.camera);
     }
+    
+    updateWeatherDisplay() {
+        const envState = this.environmentManager.getState();
+        
+        if (!envState) return;
+        
+        // Update weather type
+        const weatherType = envState.weather;
+        const weatherNames = {
+            'sunny': 'Sunny',
+            'rainy': 'Rainy',
+            'windy+foggy': 'Windy & Foggy'
+        };
+        
+        this.weatherDisplay.type.textContent = weatherNames[weatherType] || weatherType;
+        
+        // Update weather icon
+        const weatherIcons = {
+            'sunny': '☀️',
+            'rainy': '🌧️',
+            'windy+foggy': '🌫️'
+        };
+        
+        this.weatherDisplay.icon.textContent = weatherIcons[weatherType] || '☀️';
+        
+        // Update weather details
+        const details = [];
+        if (envState.isRaining) {
+            details.push('Rain falling');
+        }
+        if (envState.isFoggy) {
+            details.push('Dense fog');
+        }
+        if (envState.isWindy) {
+            details.push(`Wind: ${(envState.windSpeed * 10).toFixed(1)} km/h`);
+        }
+        if (envState.visibility < 1.0) {
+            details.push(`Visibility: ${(envState.visibility * 100).toFixed(0)}%`);
+        }
+        if (details.length === 0) {
+            details.push('Clear skies');
+        }
+        
+        this.weatherDisplay.details.textContent = details.join(' • ');
+    }
+    
+    updateTimeDisplay() {
+        const timeInfo = this.environmentManager.getTime();
+        
+        if (!timeInfo) return;
+        
+        // Update time text
+        this.timeDisplay.text.textContent = timeInfo.formatted;
+        
+        // Update time of day
+        const timeOfDayNames = {
+            'dawn': 'Dawn',
+            'day': 'Day',
+            'dusk': 'Dusk',
+            'night': 'Night'
+        };
+        this.timeDisplay.timeOfDay.textContent = timeOfDayNames[timeInfo.timeOfDay] || timeInfo.timeOfDay;
+    }
+    
+    /**
+     * Get current time
+     * Exposed for LLM context and external use
+     */
+    getTime() {
+        return this.environmentManager.getTime();
+    }
 }
 
 // Start the game
-new Game();
+const game = new Game();
+
+// Expose getTime globally for LLM context
+window.getTime = () => game.getTime();
 

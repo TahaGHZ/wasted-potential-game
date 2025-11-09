@@ -45,6 +45,59 @@
         #instructions li {
             margin: 5px 0;
         }
+        
+        #weather-display {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 100;
+            font-size: 14px;
+            min-width: 150px;
+        }
+        
+        #weather-display h3 {
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        
+        #weather-display .weather-info {
+            margin: 5px 0;
+        }
+        
+        #weather-display .weather-icon {
+            display: inline-block;
+            margin-right: 5px;
+            font-size: 18px;
+        }
+        
+        #time-display {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 100;
+            font-size: 14px;
+            min-width: 150px;
+            margin-top: 180px;
+        }
+        
+        #time-display h3 {
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        
+        #time-display .time-info {
+            margin: 5px 0;
+            font-size: 18px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -56,6 +109,25 @@
             <li>Mouse - Look around</li>
             <li>Click to lock pointer</li>
         </ul>
+    </div>
+    <div id="weather-display">
+        <h3>Weather</h3>
+        <div class="weather-info">
+            <span class="weather-icon">☀️</span>
+            <span id="weather-type">Sunny</span>
+        </div>
+        <div class="weather-info">
+            <span id="weather-details">Clear skies</span>
+        </div>
+    </div>
+    <div id="time-display">
+        <h3>Time</h3>
+        <div class="time-info">
+            <span id="time-text">12:00 AM</span>
+        </div>
+        <div class="weather-info">
+            <span id="time-of-day">Day</span>
+        </div>
     </div>
     <script type="module" src="/src/main.js"></script>
 </body>

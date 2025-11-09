@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 
 export class NPC {
-    constructor(scene, position, id) {
+    constructor(scene, position, id, environmentManager = null) {
         this.scene = scene;
         this.position = position.clone();
         this.id = id;
+        this.environmentManager = environmentManager;
         
         // NPC attributes (for future expansion)
         this.personality = this.generatePersonality();
@@ -158,6 +159,36 @@ export class NPC {
     
     getAttributes() {
         return this.attributes;
+    }
+    
+    /**
+     * Get current environment state
+     * Used by LLM agents to understand surroundings
+     */
+    getEnvironmentState() {
+        if (this.environmentManager) {
+            return this.environmentManager.getState();
+        }
+        return null;
+    }
+    
+    /**
+     * Get full context for LLM agent
+     * Includes NPC state, personality, and environment
+     */
+    getContextForLLM() {
+        return {
+            npcId: this.id,
+            position: {
+                x: this.position.x,
+                y: this.position.y,
+                z: this.position.z
+            },
+            state: this.state,
+            personality: this.personality,
+            attributes: this.attributes,
+            environment: this.getEnvironmentState()
+        };
     }
 }
 
