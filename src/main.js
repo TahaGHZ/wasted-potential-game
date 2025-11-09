@@ -501,13 +501,12 @@ class Game {
                     return;
                 }
                 
-                console.log(`[Game] NPC ${npc.id}: Memory found, adding conversation...`);
+                console.log(`[Game] NPC ${npc.id}: Memory found`);
                 
-                // Add to memory
-                npc.agent.memory.addConversation('user', transcript);
-                console.log(`[Game] NPC ${npc.id}: Conversation added to memory`);
+                // Don't add conversation here - let NPCAgent handle it with sentiment analysis
+                // npc.agent.memory.addConversation('user', transcript); // Removed - handled in processEvent with sentiment
                 
-                // Trigger agent processing
+                // Trigger agent processing (will analyze sentiment and record message)
                 console.log(`[Game] NPC ${npc.id}: Triggering processEvent('player_query')...`);
                 npc.agent.processEvent('player_query', { transcript: transcript });
                 console.log(`[Game] NPC ${npc.id}: processEvent called`);

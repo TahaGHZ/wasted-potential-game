@@ -10,9 +10,13 @@ export class NPCAgent {
         this.npc = npc;
         this.game = game;
         this.memory = memory;
-        this.apiKey = 'AIzaSyBQYtUs-QEJ9Vi8wbJPF3wNWynTqACNtg8';
+        this.apiKey = 'AIzaSyCVE70C-PiaKvLXQrtvPMuzjT80yhTcY1k';
         this.model = 'gemini-2.0-flash-lite'; // Using Gemini 2.0 Flash-Lite as specified
         this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
+        
+        // Groq API for sentiment analysis
+        this.groqApiKey = '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';
+        this.groqBaseUrl = 'https://api.groq.com/openai/v1/chat/completions';
         
         // Agent state
         this.isProcessing = false;
@@ -46,6 +50,16 @@ export class NPCAgent {
         this.isProcessing = true;
         
         try {
+            // For player queries, analyze sentiment first
+            if (eventType === 'player_query' && eventData.transcript) {
+                console.log(`[NPC ${this.npc.id}] Analyzing sentiment of player message...`);
+                const sentiment = await this.analyzeSentiment(eventData.transcript);
+                console.log(`[NPC ${this.npc.id}] Sentiment: ${sentiment.label} (confidence: ${sentiment.confidence})`);
+                
+                // Record player message with sentiment
+                this.memory.recordPlayerMessage(eventData.transcript, sentiment);
+            }
+            
             // Get current context
             const context = this.getContext(eventType, eventData);
             console.log(`[NPC ${this.npc.id}] Context prepared, calling Gemini API...`);
@@ -69,6 +83,63 @@ export class NPCAgent {
         } finally {
             this.isProcessing = false;
             console.log(`[NPC ${this.npc.id}] Event processing complete`);
+        }
+    }
+    
+    /**
+     * Analyze sentiment of player message using Groq API
+     */
+    async analyzeSentiment(message) {
+        try {
+            const response = await fetch(this.groqBaseUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.groqApiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'llama-3.3-70b-versatile',
+                    messages: [{
+                        role: 'user',
+                        content: `Analyze the sentiment of this message from a player to an NPC in a game. Respond with ONLY a JSON object in this exact format: {"label": "friendly|hostile|threatening|neutral|positive|negative", "confidence": 0.0-1.0, "reasoning": "brief explanation"}. Message: "${message}"`
+                    }],
+                    temperature: 0.3,
+                    max_tokens: 150
+                })
+            });
+            
+            if (!response.ok) {
+                console.error(`[NPC ${this.npc.id}] Groq API error: ${response.statusText}`);
+                return { label: 'neutral', confidence: 0.5, reasoning: 'Analysis failed' };
+            }
+            
+            const data = await response.json();
+            const content = data.choices?.[0]?.message?.content || '';
+            
+            // Try to parse JSON from response
+            try {
+                // Extract JSON from response (might have markdown code blocks)
+                let jsonStr = content.trim();
+                if (jsonStr.startsWith('```')) {
+                    jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+                }
+                const sentiment = JSON.parse(jsonStr);
+                console.log(`[NPC ${this.npc.id}] Sentiment analysis:`, sentiment);
+                return sentiment;
+            } catch (parseError) {
+                console.error(`[NPC ${this.npc.id}] Failed to parse sentiment response:`, content);
+                // Fallback: try to extract label from text
+                const lowerContent = content.toLowerCase();
+                if (lowerContent.includes('hostile') || lowerContent.includes('threatening') || lowerContent.includes('negative')) {
+                    return { label: 'hostile', confidence: 0.7, reasoning: 'Detected from text' };
+                } else if (lowerContent.includes('friendly') || lowerContent.includes('positive')) {
+                    return { label: 'friendly', confidence: 0.7, reasoning: 'Detected from text' };
+                }
+                return { label: 'neutral', confidence: 0.5, reasoning: 'Could not parse' };
+            }
+        } catch (error) {
+            console.error(`[NPC ${this.npc.id}] Error analyzing sentiment:`, error);
+            return { label: 'neutral', confidence: 0.5, reasoning: 'Analysis error' };
         }
     }
     
@@ -277,30 +348,40 @@ export class NPCAgent {
 Your current state: ${context.npcState.state}
 Your position: (${context.npcState.position.x.toFixed(1)}, ${context.npcState.position.y.toFixed(1)}, ${context.npcState.position.z.toFixed(1)})
 
+PLAYER REPUTATION: ${context.memory.playerReputation > 0 ? `+${context.memory.playerReputation} (Friendly)` : context.memory.playerReputation < 0 ? `${context.memory.playerReputation} (Hostile)` : '0 (Neutral)'}
+${context.memory.recentPlayerInteractions.length > 0 ? `Recent player interactions: ${context.memory.recentPlayerInteractions.slice(-3).map(i => `${i.type} (${i.impact})`).join(', ')}` : 'No recent player interactions'}
+
+IMPORTANT: Your treatment of the player should be based on how they have treated you. If they have been hostile (negative reputation), you may be more cautious, defensive, or retaliatory. If they have been friendly (positive reputation), you may be more welcoming and helpful. Adjust your responses and actions accordingly.
+
 IMPORTANT: You MUST use function calls to interact with the world. You have access to these tools:
 ${this.getToolDefinitions().map(tool => `- ${tool.name}: ${tool.description}`).join('\n')}
 
 When responding to events:
 1. ALWAYS call at least one function tool to take action
-2. Use the 'speak' tool to communicate with others
-3. Use collect_nearest_rock() to find, move to, and collect a rock in one action
-4. Use interact_with_nearest_lamp() to find, move to, and toggle a lamp in one action
-5. Use move_to() for general movement to specific coordinates
-6. Use hide_from_rain when weather is rainy
-7. You can collect rocks to add them to your inventory, then throw them using throw_rock() with a target_id (e.g., "player" for the player, or "1", "2" for NPC IDs)
+2. Use speak(message) to communicate with others - your speech will be displayed and spoken aloud
+3. Use collect_nearest_rock() to find the nearest rock, move to it, and collect it automatically (no parameters needed)
+4. Use interact_with_nearest_lamp() to find the nearest lamp, move to it, and toggle it automatically (no parameters needed)
+5. Use move_to(x, z) to move to specific coordinates (x and z are required, y defaults to 0)
+6. Use throw_rock(target_id) to aim and throw a rock at a target - use "player" for the player, or an NPC ID like "1", "2" (target_id is required)
+7. Use hide_from_rain() to find the nearest shelter (tree or hut) and move there when it's raining (no parameters needed)
+8. Use get_player_position() to get the current player's position coordinates (no parameters needed)
 
 DO NOT just respond with text - you MUST call function tools to take actions in the world.
 
 IMPORTANT - Response Format:
+- DO NOT include reasoning, thinking, or explanations in your text response
+- DO NOT include function call syntax (like speak("message")) in your text response
+- ONLY use the speak() function tool to communicate - do not write what you would say in the text response
 - When using the speak() tool, use PLAIN TEXT only. Do NOT use RPG-style formatting like "*character says*" or "*character does action*"
 - Do NOT include asterisks, italics, or narrative descriptions in your speech
 - Just speak naturally as the character would, using plain conversational text
 - Example: Instead of "*Elenor says, her voice laced with disapproval*", just say "Very well" or "I understand"
 - Your personality should come through in WHAT you say, not HOW you format it
+- If you need to communicate, ONLY call the speak() function - do not include the message in your text response
 
-Recent actions: ${context.memory.recentActions.slice(-2).map(a => a.action).join(', ') || 'none'}
+Recent player actions: ${context.memory.recentActions.length > 0 ? context.memory.recentActions.slice(-3).map(a => a.action).join(', ') : 'none'}
 
-Based on your personality, backstory, and the current situation, decide what actions to take and call the appropriate function tools. Remember who you are and act accordingly.`;
+Based on your personality, backstory, player reputation, and the current situation, decide what actions to take and call the appropriate function tools. Remember who you are and how the player has treated you. Act accordingly.`;
     }
     
     /**
@@ -311,19 +392,19 @@ Based on your personality, backstory, and the current situation, decide what act
         
         switch (eventType) {
             case 'player_query':
-                return `The player nearby said: "${eventData.transcript}"\n\nYou MUST respond by calling function tools. Use the speak() tool to respond verbally, and consider using other tools like move_to(), collect_nearest_rock(), or interact_with_nearest_lamp() if appropriate. What actions do you take?`;
+                return `The player nearby said: "${eventData.transcript}"\n\nYou MUST respond by calling function tools. Use speak(message) to respond verbally (your speech will be displayed and spoken aloud). You can also use other tools like move_to(x, z), collect_nearest_rock(), or interact_with_nearest_lamp() if appropriate. What actions do you take?`;
             
             case 'environment_change':
-                return `The environment changed: ${eventData.change} (${eventData.details || ''})\n\nYou MUST react by calling function tools. For example, if it's raining, use hide_from_rain(). If it's getting dark, use interact_with_nearest_lamp() to find and toggle a lamp. What actions do you take?`;
+                return `The environment changed: ${eventData.change} (${eventData.details || ''})\n\nYou MUST react by calling function tools. For example, if it's raining, use hide_from_rain(). If it's getting dark, use interact_with_nearest_lamp() to find the nearest lamp, move to it, and toggle it automatically. What actions do you take?`;
             
             case 'hit':
-                return `You were hit by ${eventData.thrower?.id || 'someone'}!\n\nYou MUST react by calling function tools. You could use speak() to respond, throw_rock() with target_id to retaliate (e.g., throw_rock("player") or throw_rock("1") for an NPC), or move_to() to get away. What actions do you take?`;
+                return `You were hit by ${eventData.thrower?.id || 'someone'}!\n\nYou MUST react by calling function tools. You could use speak(message) to respond, throw_rock(target_id) to retaliate (e.g., throw_rock("player") to hit the player, or throw_rock("1") to hit NPC 1), or move_to(x, z) to get away. What actions do you take?`;
             
             case 'periodic':
-                return `Periodic check: What do you want to do now? Use function tools to take actions in the world.`;
+                return `Periodic check: What do you want to do now? Use function tools to take actions in the world. Available tools: speak(message), move_to(x, z), collect_nearest_rock(), interact_with_nearest_lamp(), throw_rock(target_id), hide_from_rain(), get_player_position().`;
             
             default:
-                return `Event occurred: ${eventType}\n\nYou MUST respond by calling function tools. What actions do you take?`;
+                return `Event occurred: ${eventType}\n\nYou MUST respond by calling function tools. Available tools: speak(message), move_to(x, z), collect_nearest_rock(), interact_with_nearest_lamp(), throw_rock(target_id), hide_from_rain(), get_player_position(). What actions do you take?`;
         }
     }
     
@@ -334,24 +415,24 @@ Based on your personality, backstory, and the current situation, decide what act
         return [
             {
                 name: 'move_to',
-                description: 'Move to a specific position in the world',
+                description: 'Move to a specific position in the world. The NPC will navigate to the given coordinates.',
                 parameters: {
                     type: 'object',
                     properties: {
-                        x: { type: 'number', description: 'X coordinate' },
-                        y: { type: 'number', description: 'Y coordinate (usually 0 for ground level)' },
-                        z: { type: 'number', description: 'Z coordinate' }
+                        x: { type: 'number', description: 'X coordinate (required)' },
+                        y: { type: 'number', description: 'Y coordinate (optional, defaults to 0 for ground level)' },
+                        z: { type: 'number', description: 'Z coordinate (required)' }
                     },
                     required: ['x', 'z']
                 }
             },
             {
                 name: 'speak',
-                description: 'Speak a message (displayed as text above the NPC)',
+                description: 'Speak a message that will be displayed as text above the NPC and spoken aloud using text-to-speech. Use ONLY plain conversational text - no reasoning, explanations, function call syntax, RPG formatting, asterisks, or narrative descriptions. Just the actual words the character would say.',
                 parameters: {
                     type: 'object',
                     properties: {
-                        message: { type: 'string', description: 'The message to speak' }
+                        message: { type: 'string', description: 'The message to speak (ONLY plain text, no reasoning or function syntax)' }
                     },
                     required: ['message']
                 }
@@ -387,7 +468,7 @@ Based on your personality, backstory, and the current situation, decide what act
             },
             {
                 name: 'get_player_position',
-                description: 'Get the current player position',
+                description: 'Get the current player position coordinates. The NPC will speak the player\'s position (x, y, z coordinates).',
                 parameters: {
                     type: 'object',
                     properties: {},
@@ -396,7 +477,7 @@ Based on your personality, backstory, and the current situation, decide what act
             },
             {
                 name: 'hide_from_rain',
-                description: 'Find shelter from rain (tree or hut) and move there',
+                description: 'Find the nearest shelter from rain (tree or hut) and move there. The NPC will automatically navigate to the closest available shelter.',
                 parameters: {
                     type: 'object',
                     properties: {},
@@ -417,18 +498,18 @@ Based on your personality, backstory, and the current situation, decide what act
      * Execute agent response (text + function calls)
      */
     async executeResponse(response) {
-        // Handle text response (speak)
-        if (response.text && response.text.trim()) {
-            console.log(`[NPC ${this.npc.id}] Speaking: "${response.text}"`);
-            this.speak(response.text);
-        }
-        
         // Handle function calls
         if (response.functionCalls && response.functionCalls.length > 0) {
             console.log(`[NPC ${this.npc.id}] Executing ${response.functionCalls.length} function call(s)`);
             for (const funcCall of response.functionCalls) {
                 await this.executeTool(funcCall);
             }
+        }
+        
+        // Handle text response (speak)
+        if (response.text && response.text.trim()) {
+            console.log(`[NPC ${this.npc.id}] Speaking: "${response.text}"`);
+            this.speak(response.text);
         }
     }
     
@@ -474,8 +555,9 @@ Based on your personality, backstory, and the current situation, decide what act
                     console.warn(`[NPC ${this.npc.id}] Unknown tool: ${name}`);
             }
             
-            // Record action in memory
-            this.memory.addAction(name, args);
+            // Record action in memory (only if it's a player action - NPC actions are not saved)
+            // NPC actions are not saved to reduce memory clutter
+            // Only player actions (hits, etc.) are saved via recordPlayerHit()
             console.log(`[NPC ${this.npc.id}] Tool ${name} executed successfully`);
         } catch (error) {
             console.error(`[NPC ${this.npc.id}] Error executing tool ${name}:`, error);
@@ -487,13 +569,15 @@ Based on your personality, backstory, and the current situation, decide what act
         console.log(`[NPC ${this.npc.id}] Moving to (${x.toFixed(1)}, ${(y || 0).toFixed(1)}, ${z.toFixed(1)})`);
         const target = new THREE.Vector3(x, y || 0, z);
         this.npc.setTargetPosition(target);
-        this.memory.addAction('move_to', { x, y: y || 0, z });
+        // Don't save NPC actions to memory - only player actions are saved
+        // this.memory.addAction('move_to', { x, y: y || 0, z }); // Removed
     }
     
     speak(message) {
         console.log(`[NPC ${this.npc.id}] Speaking: "${message}"`);
         this.npc.speak(message);
-        this.memory.addConversation('assistant', message);
+        // Don't save NPC messages to memory - only player messages are saved
+        // this.memory.addConversation('assistant', message); // Removed - NPC messages not saved
     }
     
     collectNearestRock() {

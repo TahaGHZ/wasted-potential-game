@@ -539,6 +539,14 @@ export class NPC {
         // Log hit for debugging/LLM context
         console.log(`NPC ${this.id} hit by ${thrower?.id || 'unknown'} at position (${this.position.x.toFixed(2)}, ${this.position.y.toFixed(2)}, ${this.position.z.toFixed(2)})`);
         
+        // Record player hit if it's from the player
+        if (thrower && (thrower.id === 'player' || thrower.type === 'player')) {
+            if (this.agent && this.agent.memory) {
+                console.log(`[NPC ${this.id}] Recording player hit in memory`);
+                this.agent.memory.recordPlayerHit('player');
+            }
+        }
+        
         // Visual feedback: briefly change color or add effect
         if (this.mesh && this.mesh.children && this.mesh.children.length > 0) {
             const body = this.mesh.children.find(child => child.material && child.material.color);
