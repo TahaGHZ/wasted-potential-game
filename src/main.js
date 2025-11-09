@@ -3,6 +3,8 @@ import { FirstPersonController } from './FirstPersonController.js';
 import { Environment } from './Environment.js';
 import { EnvironmentManager } from './EnvironmentManager.js';
 import { NPC } from './NPC.js';
+import { Lamp } from './Lamp.js';
+import { InteractionSystem } from './InteractionSystem.js';
 
 class Game {
     constructor() {
@@ -53,6 +55,13 @@ class Game {
             timeOfDay: document.getElementById('time-of-day')
         };
         
+        // Interaction system
+        this.interactionSystem = new InteractionSystem(this.camera, this.scene);
+        
+        // Lamps
+        this.lamps = [];
+        this.createLamps();
+        
         // NPCs
         this.npcs = [];
         this.spawnNPCs();
@@ -74,6 +83,21 @@ class Game {
         ground.position.y = 0;
         ground.receiveShadow = true;
         this.scene.add(ground);
+    }
+    
+    createLamps() {
+        // Create 2 lamps at strategic positions
+        const lampPositions = [
+            new THREE.Vector3(8, 0, 8),   // Near hut
+            new THREE.Vector3(-8, 0, -8)  // Opposite side
+        ];
+        
+        lampPositions.forEach((position) => {
+            const lamp = new Lamp(this.scene, position);
+            this.lamps.push(lamp);
+            // Register with interaction system
+            this.interactionSystem.registerInteractable(lamp);
+        });
     }
     
     spawnNPCs() {
@@ -112,6 +136,9 @@ class Game {
         
         // Update time display
         this.updateTimeDisplay();
+        
+        // Update interaction system
+        this.interactionSystem.update();
         
         // Update controller with actual delta time
         this.controller.update(clampedDelta);
@@ -193,11 +220,30 @@ class Game {
     getTime() {
         return this.environmentManager.getTime();
     }
+    
+    /**
+     * Get all interactables (for LLM/NPC access)
+     */
+    getInteractables() {
+        return this.interactionSystem.getInteractables();
+    }
+    
+    /**
+     * Interact with a lamp (for NPC use)
+     * @param {number} lampIndex - Index of the lamp (0 or 1)
+     */
+    interactWithLamp(lampIndex) {
+        if (this.lamps[lampIndex]) {
+            this.lamps[lampIndex].toggle();
+        }
+    }
 }
 
 // Start the game
 const game = new Game();
 
-// Expose getTime globally for LLM context
+// Expose methods globally for LLM context
 window.getTime = () => game.getTime();
+window.getInteractables = () => game.getInteractables();
+window.interactWithLamp = (lampIndex) => game.interactWithLamp(lampIndex);
 
