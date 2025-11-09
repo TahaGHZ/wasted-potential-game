@@ -69,8 +69,8 @@ export class Lamp {
         this.interactionPrompt = new THREE.Sprite(spriteMaterial);
         this.interactionPrompt.position.set(
             this.position.x,
-            this.position.y + 4.5,
-            this.position.z
+            this.position.y + 2,
+            this.position.z+0.5
         );
         this.interactionPrompt.scale.set(2, 0.5, 1);
         this.interactionPrompt.visible = false;
