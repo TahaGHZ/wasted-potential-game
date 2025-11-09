@@ -52,11 +52,18 @@ export class NPCAgent {
         this.isProcessing = true;
         
         try {
+            // Automatically set expression based on event
+            this.autoSetExpression(eventType, eventData);
+            
             // For player queries, analyze sentiment first
             if (eventType === 'player_query' && eventData.transcript) {
                 console.log(`[NPC ${this.npc.id}] Analyzing sentiment of player message...`);
                 const sentiment = await this.analyzeSentiment(eventData.transcript);
                 console.log(`[NPC ${this.npc.id}] Sentiment: ${sentiment.label} (confidence: ${sentiment.confidence})`);
+                eventData.sentiment = sentiment;
+                
+                // Update expression based on sentiment
+                this.autoSetExpression(eventType, { ...eventData, sentiment });
                 
                 // Record player message with sentiment
                 this.memory.recordPlayerMessage(eventData.transcript, sentiment);
@@ -405,13 +412,13 @@ Based on your personality, backstory, player reputation, and the current situati
         
         switch (eventType) {
             case 'player_query':
-                return `The player nearby said: "${eventData.transcript}"\n\nYou MUST respond by calling function tools. Use speak(message) to respond verbally (your speech will be displayed and spoken aloud). You can also use other tools like move_to(x, z), collect_nearest_rock(), or interact_with_nearest_lamp() if appropriate. What actions do you take?`;
+                return `The player nearby said: "${eventData.transcript}"\n\nYou MUST respond by calling function tools. Use speak(message) to respond verbally (your speech will be displayed and spoken aloud). Use set_expression(expression) to show your emotional reaction based on the player's message and your relationship with them (e.g., "Smile" for friendly interactions, "Frown" or "Angry" for hostile ones, "Surprise" for unexpected messages). You can also use other tools like move_to(x, z), collect_nearest_rock(), or interact_with_nearest_lamp() if appropriate. What actions do you take?`;
             
             case 'environment_change':
                 return `The environment changed: ${eventData.change} (${eventData.details || ''})\n\nYou MUST react by calling function tools. For example, if it's raining, use hide_from_rain(). If it's getting dark, use interact_with_nearest_lamp() to find the nearest lamp, move to it, and toggle it automatically. What actions do you take?`;
             
             case 'hit':
-                return `You were hit by ${eventData.thrower?.id || 'someone'}!\n\nYou MUST react by calling function tools. You could use speak(message) to respond, throw_rock(target_id) to retaliate (e.g., throw_rock("player") to hit the player, or throw_rock("1") to hit NPC 1), or move_to(x, z) to get away. What actions do you take?`;
+                return `You were hit by ${eventData.thrower?.id || 'someone'}!\n\nYou MUST react by calling function tools. You could use speak(message) to respond, set_expression(expression) to show your emotional reaction (e.g., "Angry" if hostile, "Surprise" if unexpected), throw_rock(target_id) to retaliate (e.g., throw_rock("player") to hit the player, or throw_rock("1") to hit NPC 1), or move_to(x, z) to get away. What actions do you take?`;
             
             case 'periodic':
                 return `Periodic check: What do you want to do now? Use function tools to take actions in the world. Available tools: speak(message), move_to(x, z), collect_nearest_rock(), interact_with_nearest_lamp(), throw_rock(target_id), hide_from_rain(), get_player_position().`;
@@ -496,6 +503,21 @@ Based on your personality, backstory, player reputation, and the current situati
                     properties: {},
                     required: []
                 }
+            },
+            {
+                name: 'set_expression',
+                description: 'Change the NPC\'s facial expression to match their emotional state. Available expressions: "Neutral", "Smile" (happy/friendly), "Frown" (sad/disappointed), "Angry" (hostile/upset), "Surprise" (shocked/surprised). Use this to express emotions based on the situation, player interactions, or events.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        expression: { 
+                            type: 'string', 
+                            description: 'Expression name: "Neutral", "Smile", "Frown", "Angry", or "Surprise"',
+                            enum: ['Neutral', 'Smile', 'Frown', 'Angry', 'Surprise']
+                        }
+                    },
+                    required: ['expression']
+                }
             }
         ];
     }
@@ -562,6 +584,10 @@ Based on your personality, backstory, player reputation, and the current situati
                 
                 case 'hide_from_rain':
                     this.hideFromRain();
+                    break;
+                
+                case 'set_expression':
+                    this.setExpression(args.expression || 'Neutral');
                     break;
                 
                 default:
@@ -862,6 +888,63 @@ Based on your personality, backstory, player reputation, and the current situati
         } else {
             console.log(`[NPC ${this.npc.id}] No shelter found`);
         }
+    }
+    
+    setExpression(expression) {
+        console.log(`[NPC ${this.npc.id}] Setting expression to: ${expression}`);
+        if (this.npc && this.npc.setExpression) {
+            this.npc.setExpression(expression);
+        }
+    }
+    
+    /**
+     * Automatically set expression based on event/query context
+     */
+    autoSetExpression(eventType, eventData = {}) {
+        const memory = this.memory.memory;
+        const playerReputation = memory.playerReputation || 0;
+        
+        let expression = 'Neutral';
+        
+        switch(eventType) {
+            case 'player_query':
+                // Analyze sentiment if available
+                const sentiment = eventData.sentiment?.label || 'neutral';
+                if (sentiment === 'friendly' || sentiment === 'positive') {
+                    expression = playerReputation > 0 ? 'Smile' : 'Neutral';
+                } else if (sentiment === 'hostile' || sentiment === 'threatening' || sentiment === 'negative') {
+                    expression = playerReputation < -10 ? 'Angry' : 'Frown';
+                } else {
+                    expression = 'Neutral';
+                }
+                break;
+                
+            case 'hit':
+                // Hit by player or NPC
+                if (playerReputation < -5) {
+                    expression = 'Angry';
+                } else {
+                    expression = 'Surprise';
+                }
+                break;
+                
+            case 'environment_change':
+                // Environment changes might be surprising
+                if (eventData.change === 'weather' && eventData.current === 'rain') {
+                    expression = 'Frown'; // Rain is unpleasant
+                } else {
+                    expression = 'Neutral';
+                }
+                break;
+                
+            default:
+                expression = 'Neutral';
+                break;
+        }
+        
+        // Set the expression
+        this.setExpression(expression);
+        return expression;
     }
 }
 

@@ -623,8 +623,8 @@ class Game {
         
         // Tree positions for spawning: (-15, 15), (20, -10), (-20, -15), (15, 20), (-10, 25), (25, 10), (-25, -5)
         const spawnPositions = [
-            new THREE.Vector3(-12, 0, 12),
-            new THREE.Vector3(17, 0, -7),
+            new THREE.Vector3(-12, 2, 12),
+            new THREE.Vector3(17, 2, -7),
             new THREE.Vector3(-17, 0, -12),
             new THREE.Vector3(12, 0, 17),
             new THREE.Vector3(-7, 0, 22),
@@ -639,7 +639,7 @@ class Game {
             // Default NPCs if no setup data
             const npc1 = new NPC(this.scene, spawnPositions[0], 1, this.environmentManager, null);
             const npc2 = new NPC(this.scene, spawnPositions[1], 2, this.environmentManager, null);
-            this.npcs.push(npc1);
+        this.npcs.push(npc1);
             this.npcs.push(npc2);
         } else {
             // Spawn NPCs from profiles
@@ -974,18 +974,18 @@ window.addEventListener('gameSetupComplete', (event) => {
     
     // Start game with setup data
     game = new Game(setupData);
-    
-    // Expose methods globally for LLM context
-    window.getTime = () => game.getTime();
-    window.getInteractables = () => game.getInteractables();
-    window.interactWithLamp = (lampIndex) => game.interactWithLamp(lampIndex);
-    window.collectRock = (rock) => game.collectRock(rock);
-    window.throwRockAt = (startPosition, direction, speed, thrower, checkInventory = false) => {
-        const pos = new THREE.Vector3(startPosition.x, startPosition.y, startPosition.z);
-        const dir = new THREE.Vector3(direction.x, direction.y, direction.z).normalize();
-        return game.throwRockAt(pos, dir, speed, thrower, checkInventory);
-    };
-    window.getAvailableRocks = () => game.getAvailableRocks();
-    window.getInventory = () => game.getInventory();
+
+// Expose methods globally for LLM context
+window.getTime = () => game.getTime();
+window.getInteractables = () => game.getInteractables();
+window.interactWithLamp = (lampIndex) => game.interactWithLamp(lampIndex);
+window.collectRock = (rock) => game.collectRock(rock);
+window.throwRockAt = (startPosition, direction, speed, thrower, checkInventory = false) => {
+    const pos = new THREE.Vector3(startPosition.x, startPosition.y, startPosition.z);
+    const dir = new THREE.Vector3(direction.x, direction.y, direction.z).normalize();
+    return game.throwRockAt(pos, dir, speed, thrower, checkInventory);
+};
+window.getAvailableRocks = () => game.getAvailableRocks();
+window.getInventory = () => game.getInventory();
 });
 

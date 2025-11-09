@@ -18,6 +18,9 @@ export class NPC {
         this.mesh.position.copy(this.position);
         this.scene.add(this.mesh);
         
+        // Store reference to bodyGroup for animations
+        this.bodyGroup = this.mesh;
+        
         // Initialize behavior system
         this.behavior = this.initializeBehavior();
         
@@ -52,6 +55,16 @@ export class NPC {
         // Rock counter display
         this.rockCounter = null;
         this.setupRockCounter();
+        
+        // Animation system
+        this.blinkTimer = 0;
+        this.talkingTimer = 0;
+        this.isWalking = false;
+        this.targetExpression = 'Neutral';
+        this.currentExpression = 'Neutral';
+        
+        // Animation time tracking
+        this.animationTime = 0;
     }
     
     generatePersonality() {
@@ -131,70 +144,291 @@ export class NPC {
     }
     
     createMesh() {
-        const npcGroup = new THREE.Group();
+        // Main body group
+        this.bodyGroup = new THREE.Group();
         
-        // Body (torso)
-        const bodyGeometry = new THREE.BoxGeometry(0.6, 1, 0.4);
-        const bodyMaterial = new THREE.MeshStandardMaterial({ 
-            color: this.id === 0 ? 0x4169E1 : (this.id === 1 ? 0xFF6347 : 0xFFD700) // Blue, Tomato red (Elenor), or Gold (Marcus)
+        // Materials
+        const skinMat = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
+        const shirtMat = new THREE.MeshStandardMaterial({ 
+            color: this.id === 0 ? 0x4169E1 : (this.id === 1 ? 0x2C5E91 : 0xFFD700) // Blue, Blue shirt (Elenor), or Gold (Marcus)
         });
-        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-        body.position.y = 1;
-        body.castShadow = true;
-        body.receiveShadow = true;
-        npcGroup.add(body);
+        const trousersMat = new THREE.MeshStandardMaterial({ color: 0x2F4F4F });
+        const shoeMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        
+        // Torso Dimensions
+        const torsoWidth = 0.6;
+        const torsoHeight = 1.0;
+        const torsoDepth = 0.4;
+        
+        // 1. Torso (Rectangular Block)
+        const torsoGeo = new THREE.BoxGeometry(torsoWidth, torsoHeight, torsoDepth);
+        const torso = new THREE.Mesh(torsoGeo, shirtMat);
+        torso.position.y = 0;
+        torso.castShadow = true;
+        torso.receiveShadow = true;
+        this.bodyGroup.add(torso);
+        
+        // 2. Neck
+        const neckGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.2, 16);
+        const neck = new THREE.Mesh(neckGeo, skinMat);
+        neck.position.y = torsoHeight / 2;
+        neck.castShadow = true;
+        neck.receiveShadow = true;
+        this.bodyGroup.add(neck);
+        
+        // --- Arms (SEAMLESS JOINTS) ---
+        const armSegmentGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.3, 16);
+        const shoulderSphereGeo = new THREE.SphereGeometry(0.175, 16, 16);
+        const elbowSphereGeo = new THREE.SphereGeometry(0.125, 16, 16);
+        const wristSphereGeo = new THREE.SphereGeometry(0.1, 16, 16);
+        const handGeo = new THREE.BoxGeometry(0.125, 0.175, 0.1);
+        
+        // Left Arm Structure
+        this.leftArmPivot = new THREE.Group();
+        this.leftArmPivot.position.set(-(torsoWidth / 2) - 0.05, 0.25, 0);
+        this.bodyGroup.add(this.leftArmPivot);
+        
+        const leftShoulderSphere = new THREE.Mesh(shoulderSphereGeo, shirtMat);
+        leftShoulderSphere.position.set(0, 0, 0);
+        this.leftArmPivot.add(leftShoulderSphere);
+        
+        this.leftUpperArm = new THREE.Mesh(armSegmentGeo, shirtMat);
+        this.leftUpperArm.position.y = -0.175;
+        this.leftUpperArm.castShadow = true;
+        this.leftUpperArm.receiveShadow = true;
+        this.leftArmPivot.add(this.leftUpperArm);
+        
+        const leftElbowSphere = new THREE.Mesh(elbowSphereGeo, skinMat);
+        leftElbowSphere.position.y = -0.3;
+        this.leftUpperArm.add(leftElbowSphere);
+        
+        this.leftElbowPivot = new THREE.Group();
+        this.leftElbowPivot.position.y = -0.3;
+        this.leftUpperArm.add(this.leftElbowPivot);
+        
+        this.leftLowerArm = new THREE.Mesh(armSegmentGeo, skinMat);
+        this.leftLowerArm.position.y = -0.175;
+        this.leftLowerArm.castShadow = true;
+        this.leftLowerArm.receiveShadow = true;
+        this.leftElbowPivot.add(this.leftLowerArm);
+        
+        const leftWristSphere = new THREE.Mesh(wristSphereGeo, skinMat);
+        leftWristSphere.position.y = -0.3;
+        this.leftLowerArm.add(leftWristSphere);
+        
+        this.leftHand = new THREE.Mesh(handGeo, skinMat);
+        this.leftHand.position.y = -0.375;
+        this.leftHand.castShadow = true;
+        this.leftHand.receiveShadow = true;
+        this.leftLowerArm.add(this.leftHand);
+        
+        // Right Arm Structure (Symmetrical)
+        this.rightArmPivot = new THREE.Group();
+        this.rightArmPivot.position.set((torsoWidth / 2) + 0.05, 0.25, 0);
+        this.bodyGroup.add(this.rightArmPivot);
+        
+        const rightShoulderSphere = new THREE.Mesh(shoulderSphereGeo, shirtMat);
+        rightShoulderSphere.position.set(0, 0, 0);
+        this.rightArmPivot.add(rightShoulderSphere);
+        
+        this.rightUpperArm = new THREE.Mesh(armSegmentGeo, shirtMat);
+        this.rightUpperArm.position.y = -0.175;
+        this.rightUpperArm.castShadow = true;
+        this.rightUpperArm.receiveShadow = true;
+        this.rightArmPivot.add(this.rightUpperArm);
+        
+        const rightElbowSphere = new THREE.Mesh(elbowSphereGeo, skinMat);
+        rightElbowSphere.position.y = -0.3;
+        this.rightUpperArm.add(rightElbowSphere);
+        
+        this.rightElbowPivot = new THREE.Group();
+        this.rightElbowPivot.position.y = -0.3;
+        this.rightUpperArm.add(this.rightElbowPivot);
+        
+        this.rightLowerArm = new THREE.Mesh(armSegmentGeo, skinMat);
+        this.rightLowerArm.position.y = -0.175;
+        this.rightLowerArm.castShadow = true;
+        this.rightLowerArm.receiveShadow = true;
+        this.rightElbowPivot.add(this.rightLowerArm);
+        
+        const rightWristSphere = new THREE.Mesh(wristSphereGeo, skinMat);
+        rightWristSphere.position.y = -0.3;
+        this.rightLowerArm.add(rightWristSphere);
+        
+        this.rightHand = new THREE.Mesh(handGeo, skinMat);
+        this.rightHand.position.y = -0.375;
+        this.rightHand.castShadow = true;
+        this.rightHand.receiveShadow = true;
+        this.rightLowerArm.add(this.rightHand);
+        
+        // Initial static pose rotations
+        const idleArmRotationZ = 0;
+        const staticElbowBend = 0;
+        
+        this.leftArmPivot.rotation.z = idleArmRotationZ;
+        this.rightArmPivot.rotation.z = idleArmRotationZ;
+        this.leftElbowPivot.rotation.x = staticElbowBend;
+        this.rightElbowPivot.rotation.x = staticElbowBend;
+        
+        // --- Legs and Feet (SEAMLESS JOINTS) ---
+        const upperLegGeo = new THREE.CylinderGeometry(0.175, 0.175, 0.4, 16);
+        const lowerLegGeo = new THREE.CylinderGeometry(0.175, 0.175, 0.4, 16);
+        const footGeo = new THREE.BoxGeometry(0.2, 0.15, 0.4);
+        const kneeGeo = new THREE.SphereGeometry(0.175, 16, 16);
+        const hipSphereGeo = new THREE.SphereGeometry(0.2, 16, 16);
+        
+        // Left Leg Structure
+        this.leftLegPivot = new THREE.Group();
+        this.leftLegPivot.position.set(-0.2, -(torsoHeight / 2), 0);
+        this.bodyGroup.add(this.leftLegPivot);
+        
+        const leftHipSphere = new THREE.Mesh(hipSphereGeo, trousersMat);
+        leftHipSphere.position.y = 0.2;
+        this.leftLegPivot.add(leftHipSphere);
+        
+        this.leftUpperLeg = new THREE.Mesh(upperLegGeo, trousersMat);
+        this.leftUpperLeg.position.y = -0.2;
+        this.leftUpperLeg.castShadow = true;
+        this.leftUpperLeg.receiveShadow = true;
+        this.leftLegPivot.add(this.leftUpperLeg);
+        
+        this.leftKneePivot = new THREE.Group();
+        this.leftKneePivot.position.y = -0.4;
+        this.leftUpperLeg.add(this.leftKneePivot);
+        
+        const leftKnee = new THREE.Mesh(kneeGeo, trousersMat);
+        leftKnee.position.z = 0.025;
+        this.leftKneePivot.add(leftKnee);
+        
+        this.leftLowerLeg = new THREE.Mesh(lowerLegGeo, trousersMat);
+        this.leftLowerLeg.position.y = -0.2;
+        this.leftLowerLeg.castShadow = true;
+        this.leftLowerLeg.receiveShadow = true;
+        this.leftKneePivot.add(this.leftLowerLeg);
+        
+        this.leftFoot = new THREE.Mesh(footGeo, shoeMat);
+        this.leftFoot.position.set(0, -0.4, 0.1);
+        this.leftFoot.castShadow = true;
+        this.leftFoot.receiveShadow = true;
+        this.leftLowerLeg.add(this.leftFoot);
+        
+        // Right Leg Structure (Symmetrical)
+        this.rightLegPivot = new THREE.Group();
+        this.rightLegPivot.position.set(0.2, -(torsoHeight / 2), 0);
+        this.bodyGroup.add(this.rightLegPivot);
+        
+        const rightHipSphere = new THREE.Mesh(hipSphereGeo, trousersMat);
+        rightHipSphere.position.y = 0.2;
+        this.rightLegPivot.add(rightHipSphere);
+        
+        this.rightUpperLeg = new THREE.Mesh(upperLegGeo, trousersMat);
+        this.rightUpperLeg.position.y = -0.2;
+        this.rightUpperLeg.castShadow = true;
+        this.rightUpperLeg.receiveShadow = true;
+        this.rightLegPivot.add(this.rightUpperLeg);
+        
+        this.rightKneePivot = new THREE.Group();
+        this.rightKneePivot.position.y = -0.4;
+        this.rightUpperLeg.add(this.rightKneePivot);
+        
+        const rightKnee = new THREE.Mesh(kneeGeo, trousersMat);
+        rightKnee.position.z = 0.025;
+        this.rightKneePivot.add(rightKnee);
+        
+        this.rightLowerLeg = new THREE.Mesh(lowerLegGeo, trousersMat);
+        this.rightLowerLeg.position.y = -0.2;
+        this.rightLowerLeg.castShadow = true;
+        this.rightLowerLeg.receiveShadow = true;
+        this.rightKneePivot.add(this.rightLowerLeg);
+        
+        this.rightFoot = new THREE.Mesh(footGeo, shoeMat);
+        this.rightFoot.position.set(0, -0.4, 0.1);
+        this.rightFoot.castShadow = true;
+        this.rightFoot.receiveShadow = true;
+        this.rightLowerLeg.add(this.rightFoot);
+        
+        // Apply a slight static knee bend
+        const staticKneeBend = Math.PI * 0.05;
+        this.leftKneePivot.rotation.x = staticKneeBend;
+        this.rightKneePivot.rotation.x = staticKneeBend;
+        
+        // Final body position adjustment
+        // Position bodyGroup so feet are at y=0 (ground level)
+        // Torso height = 1.0, legs extend down ~1.2 units from torso bottom
+        // So bodyGroup should be at y = 1.2 to put feet at y=0
+        this.bodyGroup.position.y = 1.2;
+        
+        // --- Face Setup ---
+        this.faceGroup = new THREE.Group();
+        this.faceGroup.position.y = 1.0;
+        this.bodyGroup.add(this.faceGroup);
         
         // Head
-        const headGeometry = new THREE.SphereGeometry(0.3, 16, 16);
-        const headMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0xFFDBB3 // Skin tone
-        });
-        const head = new THREE.Mesh(headGeometry, headMaterial);
-        head.position.y = 1.8;
+        const headGeo = new THREE.SphereGeometry(0.5, 32, 32);
+        const head = new THREE.Mesh(headGeo, skinMat);
         head.castShadow = true;
         head.receiveShadow = true;
-        npcGroup.add(head);
+        this.faceGroup.add(head);
         
-        // Arms
-        const armGeometry = new THREE.BoxGeometry(0.2, 0.8, 0.2);
-        const armMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0xFFDBB3
+        // Eyes
+        const eyeGeo = new THREE.SphereGeometry(0.05, 16, 16);
+        const eyeMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
+        this.leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+        this.rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+        this.leftEye.position.set(-0.15, 0.1, 0.45);
+        this.rightEye.position.set(0.15, 0.1, 0.45);
+        this.faceGroup.add(this.leftEye, this.rightEye);
+        
+        // Brows
+        const browGeo = new THREE.BoxGeometry(0.2, 0.04, 0.025);
+        const browMat = new THREE.MeshStandardMaterial({ color: 0x000000 });
+        this.leftBrow = new THREE.Mesh(browGeo, browMat);
+        this.rightBrow = new THREE.Mesh(browGeo, browMat);
+        this.leftBrow.position.set(-0.15, 0.275, 0.45);
+        this.rightBrow.position.set(0.15, 0.275, 0.45);
+        this.faceGroup.add(this.leftBrow, this.rightBrow);
+        
+        // Cheeks
+        const cheekGeo = new THREE.SphereGeometry(0.075, 16, 16);
+        const cheekMat = new THREE.MeshStandardMaterial({ color: 0xff9999 });
+        this.leftCheek = new THREE.Mesh(cheekGeo, cheekMat);
+        this.rightCheek = new THREE.Mesh(cheekGeo, cheekMat);
+        this.leftCheek.position.set(-0.25, -0.05, 0.35);
+        this.rightCheek.position.set(0.25, -0.05, 0.35);
+        this.faceGroup.add(this.leftCheek, this.rightCheek);
+        
+        // Mouths
+        const mouthMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        this.mouths = {};
+        
+        this.mouths.Neutral = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.01, 0.025), mouthMat);
+        this.mouths.Smile = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.0125, 16, 32, Math.PI), mouthMat);
+        this.mouths.Smile.rotation.x = Math.PI;
+        this.mouths.Frown = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.0125, 16, 32, Math.PI), mouthMat);
+        this.mouths.Angry = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.025, 0.025), mouthMat);
+        this.mouths.Surprise = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.15, 0.025), mouthMat);
+        this.mouths.SurpriseTeeth = new THREE.Mesh(
+            new THREE.BoxGeometry(0.2, 0.025, 0.025),
+            new THREE.MeshStandardMaterial({ color: 0xffffff })
+        );
+        this.mouths.Talking = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.05, 0.025), mouthMat);
+        
+        this.mouths.Neutral.position.set(0, -0.15, 0.51);
+        this.mouths.Smile.position.set(0, -0.125, 0.515);
+        this.mouths.Frown.position.set(0, -0.175, 0.515);
+        this.mouths.Angry.position.set(0, -0.15, 0.51);
+        this.mouths.Surprise.position.set(0, -0.125, 0.51);
+        this.mouths.SurpriseTeeth.position.set(0, -0.05, 0.52);
+        this.mouths.Talking.position.set(0, -0.15, 0.51);
+        
+        Object.values(this.mouths).forEach(m => {
+            this.faceGroup.add(m);
+            m.visible = false;
         });
         
-        const leftArm = new THREE.Mesh(armGeometry, armMaterial);
-        leftArm.position.set(-0.4, 1, 0);
-        leftArm.castShadow = true;
-        leftArm.receiveShadow = true;
-        npcGroup.add(leftArm);
+        this.mouths.Neutral.visible = true;
         
-        const rightArm = new THREE.Mesh(armGeometry, armMaterial);
-        rightArm.position.set(0.4, 1, 0);
-        rightArm.castShadow = true;
-        rightArm.receiveShadow = true;
-        npcGroup.add(rightArm);
-        
-        // Legs
-        const legGeometry = new THREE.BoxGeometry(0.2, 0.8, 0.2);
-        const legMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x2F2F2F // Dark gray
-        });
-        
-        const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
-        leftLeg.position.set(-0.2, 0.4, 0);
-        leftLeg.castShadow = true;
-        leftLeg.receiveShadow = true;
-        npcGroup.add(leftLeg);
-        
-        const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
-        rightLeg.position.set(0.2, 0.4, 0);
-        rightLeg.castShadow = true;
-        rightLeg.receiveShadow = true;
-        npcGroup.add(rightLeg);
-        
-        // Name tag will be created as HTML element (similar to speech bubble)
-        // No 3D mesh needed for name tag
-        
-        return npcGroup;
+        return this.bodyGroup;
     }
     
     initializeBehavior() {
@@ -208,10 +442,18 @@ export class NPC {
     }
     
     update(delta = 0.016) {
+        // Update animation time
+        this.animationTime += delta;
+        
         // Update movement
         if (this.targetPosition && this.isMoving) {
             this.updateMovement(delta);
+        } else {
+            this.isWalking = false;
         }
+        
+        // Update animations
+        this.updateAnimations(delta);
         
         // Update speech bubble position
         if (this.speechBubble) {
@@ -229,8 +471,154 @@ export class NPC {
         }
     }
     
+    updateAnimations(delta) {
+        if (!this.bodyGroup) return;
+        
+        const time = this.animationTime;
+        const staticElbowBend = 0;
+        const idleArmRotationZ = 0;
+        const staticKneeBend = Math.PI * 0.05;
+        
+        // --- Face Animations ---
+        // Blinking
+        this.blinkTimer += delta;
+        const blink = Math.sin(this.blinkTimer * Math.PI * 2 / 3) > 0.95 ? 0.1 : 1;
+        if (this.leftEye) this.leftEye.scale.y = blink;
+        if (this.rightEye) this.rightEye.scale.y = blink;
+        
+        // No talking animation - only emotion expressions
+        
+        // --- Body Animations ---
+        if (this.isWalking) {
+            const walkSpeed = 5;
+            const strideLength = Math.PI * 0.3;
+            const armSwing = Math.PI * 0.2;
+            
+            const legMovement = Math.sin(time * walkSpeed);
+            
+            // Leg Movement: Alternating forward/backward swing
+            if (this.leftLegPivot) this.leftLegPivot.rotation.x = legMovement * strideLength;
+            if (this.rightLegPivot) this.rightLegPivot.rotation.x = -legMovement * strideLength;
+            
+            // Arm Movement: Opposite swing for balance
+            if (this.leftArmPivot) this.leftArmPivot.rotation.x = -legMovement * armSwing;
+            if (this.rightArmPivot) this.rightArmPivot.rotation.x = legMovement * armSwing;
+            
+            // Simple Knee Bend while walking
+            const kneeBend = Math.abs(Math.sin(time * walkSpeed * 0.5)) * Math.PI * 0.1;
+            if (this.leftKneePivot) this.leftKneePivot.rotation.x = staticKneeBend + kneeBend;
+            if (this.rightKneePivot) this.rightKneePivot.rotation.x = staticKneeBend + kneeBend;
+        } else {
+            // Static Reset (Interpolation back to Idle Pose)
+            if (this.leftArmPivot) {
+                this.leftArmPivot.rotation.x += (0 - this.leftArmPivot.rotation.x) * 0.1;
+                this.leftArmPivot.rotation.z += (idleArmRotationZ - this.leftArmPivot.rotation.z) * 0.1;
+            }
+            if (this.rightArmPivot) {
+                this.rightArmPivot.rotation.x += (0 - this.rightArmPivot.rotation.x) * 0.1;
+                this.rightArmPivot.rotation.z += (idleArmRotationZ - this.rightArmPivot.rotation.z) * 0.1;
+            }
+            if (this.leftElbowPivot) {
+                this.leftElbowPivot.rotation.x += (staticElbowBend - this.leftElbowPivot.rotation.x) * 0.1;
+            }
+            if (this.rightElbowPivot) {
+                this.rightElbowPivot.rotation.x += (staticElbowBend - this.rightElbowPivot.rotation.x) * 0.1;
+            }
+            
+            // Interpolate legs/knees back to their fixed starting pose
+            if (this.leftLegPivot) this.leftLegPivot.rotation.x += (0 - this.leftLegPivot.rotation.x) * 0.1;
+            if (this.rightLegPivot) this.rightLegPivot.rotation.x += (0 - this.rightLegPivot.rotation.x) * 0.1;
+            if (this.leftKneePivot) this.leftKneePivot.rotation.x += (staticKneeBend - this.leftKneePivot.rotation.x) * 0.1;
+            if (this.rightKneePivot) this.rightKneePivot.rotation.x += (staticKneeBend - this.rightKneePivot.rotation.x) * 0.1;
+        }
+        
+        // --- Facial Expression Transitions ---
+        switch(this.targetExpression) {
+            case 'Smile':
+                if (this.leftBrow) this.leftBrow.rotation.z += (-0.15 - this.leftBrow.rotation.z) * 0.1;
+                if (this.rightBrow) this.rightBrow.rotation.z += (0.15 - this.rightBrow.rotation.z) * 0.1;
+                if (this.leftCheek) this.leftCheek.position.y += (0.05 - this.leftCheek.position.y) * 0.1;
+                if (this.rightCheek) this.rightCheek.position.y += (0.05 - this.rightCheek.position.y) * 0.1;
+                break;
+            case 'Frown':
+                if (this.leftBrow) this.leftBrow.rotation.z += (0.15 - this.leftBrow.rotation.z) * 0.1;
+                if (this.rightBrow) this.rightBrow.rotation.z += (-0.15 - this.rightBrow.rotation.z) * 0.1;
+                if (this.leftCheek) this.leftCheek.position.y += (-0.05 - this.leftCheek.position.y) * 0.1;
+                if (this.rightCheek) this.rightCheek.position.y += (-0.05 - this.rightCheek.position.y) * 0.1;
+                break;
+            case 'Angry':
+                if (this.leftBrow) this.leftBrow.rotation.z += (-0.3 - this.leftBrow.rotation.z) * 0.1;
+                if (this.rightBrow) this.rightBrow.rotation.z += (0.3 - this.rightBrow.rotation.z) * 0.1;
+                if (this.leftCheek) this.leftCheek.position.y += (-0.02 - this.leftCheek.position.y) * 0.1;
+                if (this.rightCheek) this.rightCheek.position.y += (-0.02 - this.rightCheek.position.y) * 0.1;
+                break;
+            case 'Surprise':
+                if (this.leftBrow) {
+                    this.leftBrow.position.y += (0.65 - this.leftBrow.position.y) * 0.1;
+                    this.leftBrow.rotation.z += (0 - this.leftBrow.rotation.z) * 0.1;
+                }
+                if (this.rightBrow) {
+                    this.rightBrow.position.y += (0.65 - this.rightBrow.position.y) * 0.1;
+                    this.rightBrow.rotation.z += (0 - this.rightBrow.rotation.z) * 0.1;
+                }
+                if (this.leftCheek) this.leftCheek.position.y += (-0.05 - this.leftCheek.position.y) * 0.1;
+                if (this.rightCheek) this.rightCheek.position.y += (-0.05 - this.rightCheek.position.y) * 0.1;
+                break;
+            default: // Neutral
+                if (this.leftBrow) {
+                    this.leftBrow.rotation.z += (0 - this.leftBrow.rotation.z) * 0.1;
+                    this.leftBrow.position.y += (0.275 - this.leftBrow.position.y) * 0.1;
+                }
+                if (this.rightBrow) {
+                    this.rightBrow.rotation.z += (0 - this.rightBrow.rotation.z) * 0.1;
+                    this.rightBrow.position.y += (0.275 - this.rightBrow.position.y) * 0.1;
+                }
+                if (this.leftCheek) this.leftCheek.position.y += (-0.05 - this.leftCheek.position.y) * 0.1;
+                if (this.rightCheek) this.rightCheek.position.y += (-0.05 - this.rightCheek.position.y) * 0.1;
+                break;
+        }
+    }
+    
+    setExpression(name) {
+        if (!this.mouths) return;
+        
+        this.targetExpression = name;
+        this.currentExpression = name;
+        
+        // Hide all mouths
+        Object.values(this.mouths).forEach(m => {
+            if (m) m.visible = false;
+        });
+        
+        // Show the selected mouth
+        switch(name) {
+            case 'Neutral':
+                if (this.mouths.Neutral) this.mouths.Neutral.visible = true;
+                break;
+            case 'Smile':
+                if (this.mouths.Smile) this.mouths.Smile.visible = true;
+                break;
+            case 'Frown':
+                if (this.mouths.Frown) this.mouths.Frown.visible = true;
+                break;
+            case 'Angry':
+                if (this.mouths.Angry) this.mouths.Angry.visible = true;
+                break;
+            case 'Surprise':
+                if (this.mouths.Surprise) this.mouths.Surprise.visible = true;
+                if (this.mouths.SurpriseTeeth) this.mouths.SurpriseTeeth.visible = true;
+                break;
+        }
+        
+        console.log(`[NPC ${this.id}] Expression set to: ${name}`);
+    }
+    
     updateMovement(delta) {
         if (!this.targetPosition) return;
+        
+        // Ensure Y coordinate is preserved (NPCs stay on ground level)
+        const targetY = this.position.y; // Keep current Y (should be 0 for ground level)
+        this.targetPosition.y = targetY; // Force target Y to match current Y
         
         const direction = this.targetPosition.clone().sub(this.position);
         const distance = direction.length();
@@ -238,17 +626,21 @@ export class NPC {
         if (distance < 0.1) {
             // Reached target
             this.position.copy(this.targetPosition);
+            this.position.y = targetY; // Ensure Y stays at ground level
             this.mesh.position.copy(this.position);
             this.targetPosition = null;
             this.isMoving = false;
+            this.isWalking = false;
             this.state = 'idle';
         } else {
-            // Move towards target
+            // Move towards target (only on X and Z axes, preserve Y)
             direction.normalize();
             const moveDistance = Math.min(this.moveSpeed * delta, distance);
             this.position.add(direction.multiplyScalar(moveDistance));
+            this.position.y = targetY; // Ensure Y stays at ground level
             this.mesh.position.copy(this.position);
             this.isMoving = true;
+            this.isWalking = true;
             this.state = 'walking';
         }
     }
@@ -408,6 +800,8 @@ export class NPC {
         this.speechBubble.textContent = message;
         this.speechBubble.style.display = 'block';
         this.state = 'talking';
+        
+        // Don't change expression - keep current emotion expression
         
         // Stop any current speech
         this.stopSpeaking();
@@ -622,6 +1016,8 @@ export class NPC {
     
     setTargetPosition(position) {
         this.targetPosition = position.clone();
+        // Ensure Y coordinate is 0 (ground level) - NPCs move horizontally only
+        this.targetPosition.y = 0;
         this.isMoving = true;
     }
     
