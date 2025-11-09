@@ -457,35 +457,102 @@ class Game {
         this.sendToNearbyNPCs(finalTranscript);
     }
     
+    /**
+     * Detect if an NPC name is mentioned in the transcript
+     * @param {string} transcript - The player's message
+     * @returns {NPC|null} - The NPC whose name was mentioned, or null if none
+     */
+    findMentionedNPC(transcript) {
+        const lowerTranscript = transcript.toLowerCase();
+        
+        // Check each NPC for name matches
+        for (const npc of this.npcs) {
+            if (npc.personality && npc.personality.name) {
+                const npcName = npc.personality.name.toLowerCase();
+                const displayName = npc.personality.displayName ? npc.personality.displayName.toLowerCase() : npcName;
+                
+                // Check if the name appears in the transcript (word boundary matching)
+                const nameRegex = new RegExp(`\\b${npcName}\\b`, 'i');
+                const displayNameRegex = new RegExp(`\\b${displayName}\\b`, 'i');
+                
+                if (nameRegex.test(transcript) || displayNameRegex.test(transcript)) {
+                    console.log(`[Game] Found mentioned NPC: ${npc.personality.name} (ID: ${npc.id})`);
+                    return npc;
+                }
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Find the closest NPC to the player
+     * @param {Array} npcs - Array of NPCs to check
+     * @param {THREE.Vector3} playerPosition - Player's position
+     * @param {number} maxRange - Maximum range to consider
+     * @returns {NPC|null} - The closest NPC, or null if none in range
+     */
+    findClosestNPC(npcs, playerPosition, maxRange = 15.0) {
+        let closestNPC = null;
+        let closestDistance = Infinity;
+        
+        for (const npc of npcs) {
+            if (!npc.position) continue;
+            
+            const distance = playerPosition.distanceTo(npc.position);
+            if (distance <= maxRange && distance < closestDistance) {
+                closestDistance = distance;
+                closestNPC = npc;
+            }
+        }
+        
+        if (closestNPC) {
+            console.log(`[Game] Closest NPC: ${closestNPC.personality?.name || `NPC ${closestNPC.id}`} at distance ${closestDistance.toFixed(2)}`);
+        }
+        
+        return closestNPC;
+    }
+    
     sendToNearbyNPCs(transcript) {
         console.log(`[Game] sendToNearbyNPCs called with transcript: "${transcript}"`);
         
         // Get player position (camera position)
         const playerPosition = this.camera.position;
-        const interactionRange = 15.0; // Range for NPC interaction (increased from 5.0)
+        const interactionRange = 15.0; // Range for NPC interaction
         
         console.log(`[Game] Player position: (${playerPosition.x.toFixed(2)}, ${playerPosition.y.toFixed(2)}, ${playerPosition.z.toFixed(2)})`);
         console.log(`[Game] Total NPCs: ${this.npcs.length}`);
         
-        // Find nearby NPCs
-        const nearbyNPCs = this.npcs.filter(npc => {
-            if (!npc.position) {
-                console.log(`[Game] NPC ${npc.id}: No position`);
-                return false;
-            }
-            const distance = playerPosition.distanceTo(npc.position);
-            const inRange = distance <= interactionRange;
-            console.log(`[Game] NPC ${npc.id}: Distance ${distance.toFixed(2)}, In range: ${inRange}`);
-            return inRange;
-        });
+        // Check if a specific NPC name is mentioned
+        const mentionedNPC = this.findMentionedNPC(transcript);
         
-        if (nearbyNPCs.length > 0) {
-            console.log(`[Game] Sending transcript to ${nearbyNPCs.length} nearby NPC(s):`, transcript);
-            
-            // Send to each nearby NPC's agent
-            nearbyNPCs.forEach(npc => {
+        let targetNPCs = [];
+        
+        if (mentionedNPC) {
+            // If a name is mentioned, check if that NPC is in range
+            if (mentionedNPC.position) {
+                const distance = playerPosition.distanceTo(mentionedNPC.position);
+                if (distance <= interactionRange) {
+                    targetNPCs = [mentionedNPC];
+                    console.log(`[Game] Name mentioned: ${mentionedNPC.personality?.name || `NPC ${mentionedNPC.id}`} is in range (${distance.toFixed(2)})`);
+                } else {
+                    console.log(`[Game] Name mentioned: ${mentionedNPC.personality?.name || `NPC ${mentionedNPC.id}`} is out of range (${distance.toFixed(2)})`);
+                }
+            }
+        } else {
+            // No name mentioned, find the closest NPC
+            const closestNPC = this.findClosestNPC(this.npcs, playerPosition, interactionRange);
+            if (closestNPC) {
+                targetNPCs = [closestNPC];
+                console.log(`[Game] No name mentioned, using closest NPC: ${closestNPC.personality?.name || `NPC ${closestNPC.id}`}`);
+            }
+        }
+        
+        if (targetNPCs.length > 0) {
+            // Send to the selected NPC(s)
+            targetNPCs.forEach(npc => {
                 const distance = playerPosition.distanceTo(npc.position).toFixed(2);
-                console.log(`[Game] Processing NPC ${npc.id} at distance ${distance}`);
+                console.log(`[Game] Processing NPC ${npc.id} (${npc.personality?.name || `NPC ${npc.id}`}) at distance ${distance}`);
                 
                 // Check if agent exists
                 if (!npc.agent) {
@@ -503,16 +570,13 @@ class Game {
                 
                 console.log(`[Game] NPC ${npc.id}: Memory found`);
                 
-                // Don't add conversation here - let NPCAgent handle it with sentiment analysis
-                // npc.agent.memory.addConversation('user', transcript); // Removed - handled in processEvent with sentiment
-                
                 // Trigger agent processing (will analyze sentiment and record message)
                 console.log(`[Game] NPC ${npc.id}: Triggering processEvent('player_query')...`);
                 npc.agent.processEvent('player_query', { transcript: transcript });
                 console.log(`[Game] NPC ${npc.id}: processEvent called`);
             });
         } else {
-            console.log(`[Game] No NPCs in range to receive transcript`);
+            console.log(`[Game] No NPCs available to receive transcript (either out of range or no NPCs found)`);
         }
     }
     
@@ -550,14 +614,14 @@ class Game {
         
         // Spawn 2 NPCs near trees
         // Tree positions: (-15, 15), (20, -10), (-20, -15), (15, 20), (-10, 25), (25, 10), (-25, -5)
-        const npc1Position = new THREE.Vector3(-12, 0, 12); // Near tree at (-15, 15)
-        // const npc2Position = new THREE.Vector3(17, 0, -7); // Near tree at (20, -10)
+        const npc1Position = new THREE.Vector3(-12, 0, 12); // Near tree at (-15, 15) - Elenor
+        const npc2Position = new THREE.Vector3(17, 0, -7); // Near tree at (20, -10) - Marcus
         
-        const npc1 = new NPC(this.scene, npc1Position, 1, this.environmentManager);
-        // const npc2 = new NPC(this.scene, npc2Position, 2, this.environmentManager);
+        const npc1 = new NPC(this.scene, npc1Position, 1, this.environmentManager); // Elenor
+        const npc2 = new NPC(this.scene, npc2Position, 2, this.environmentManager); // Marcus
         
         this.npcs.push(npc1);
-        // this.npcs.push(npc2);
+        this.npcs.push(npc2);
         
         // Set up AI agents for NPCs (after adding to array)
         this.setupNPCAgents();

@@ -54,27 +54,68 @@ export class NPC {
     }
     
     generatePersonality() {
-        // Static personality for the single NPC (for now)
+        // Generate personality based on NPC ID
         // Later, this will be generated from natural language paragraphs
-        return {
-            name: 'Elenor',
-            displayName: 'Elenor',
-            backstory: 'You are Elenor, an elven mage from the Silverwoods. You value order, wisdom, and loyalty.',
-            traits: {
-                order: 0.9,      // High value for order
-                wisdom: 0.95,    // Very high value for wisdom
-                loyalty: 0.85,   // High value for loyalty
+        if (this.id === 1) {
+            // Elenor - Elven mage
+            return {
+                name: 'Elenor',
+                displayName: 'Elenor',
+                backstory: 'You are Elenor, an elven mage from the Silverwoods. You value order, wisdom, and loyalty.',
+                traits: {
+                    order: 0.9,      // High value for order
+                    wisdom: 0.95,    // Very high value for wisdom
+                    loyalty: 0.85,   // High value for loyalty
+                    friendliness: 0.7,
+                    curiosity: 0.8,
+                    energy: 0.6,
+                    talkativeness: 0.75
+                },
+                // Legacy numeric traits for compatibility
                 friendliness: 0.7,
                 curiosity: 0.8,
                 energy: 0.6,
                 talkativeness: 0.75
-            },
-            // Legacy numeric traits for compatibility
-            friendliness: 0.7,
-            curiosity: 0.8,
-            energy: 0.6,
-            talkativeness: 0.75
-        };
+            };
+        } else if (this.id === 2) {
+            // Marcus - Warrior guard
+            return {
+                name: 'Marcus',
+                displayName: 'Marcus',
+                backstory: 'You are Marcus, a seasoned warrior and guard from the northern fortresses. You value honor, strength, and duty. You are straightforward and protective, always ready to defend those in need.',
+                traits: {
+                    honor: 0.9,       // High value for honor
+                    strength: 0.85,   // High physical strength
+                    duty: 0.9,        // Very high sense of duty
+                    friendliness: 0.65, // Moderate friendliness
+                    courage: 0.95,    // Very high courage
+                    energy: 0.85,
+                    talkativeness: 0.6 // Less talkative, more action-oriented
+                },
+                // Legacy numeric traits for compatibility
+                friendliness: 0.65,
+                curiosity: 0.5,
+                energy: 0.85,
+                talkativeness: 0.6
+            };
+        } else {
+            // Default personality for other NPCs
+            return {
+                name: `NPC ${this.id}`,
+                displayName: `NPC ${this.id}`,
+                backstory: `You are NPC ${this.id}, a character in this world.`,
+                traits: {
+                    friendliness: 0.5,
+                    curiosity: 0.5,
+                    energy: 0.5,
+                    talkativeness: 0.5
+                },
+                friendliness: 0.5,
+                curiosity: 0.5,
+                energy: 0.5,
+                talkativeness: 0.5
+            };
+        }
     }
     
     generateAttributes() {
@@ -94,7 +135,7 @@ export class NPC {
         // Body (torso)
         const bodyGeometry = new THREE.BoxGeometry(0.6, 1, 0.4);
         const bodyMaterial = new THREE.MeshStandardMaterial({ 
-            color: this.id === 0 ? 0x4169E1 : 0xFF6347 // Blue or Tomato red
+            color: this.id === 0 ? 0x4169E1 : (this.id === 1 ? 0xFF6347 : 0xFFD700) // Blue, Tomato red (Elenor), or Gold (Marcus)
         });
         const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
         body.position.y = 1;
@@ -430,12 +471,33 @@ export class NPC {
         // Try to use a more natural voice if available
         const voices = this.speechSynthesis.getVoices();
         if (voices.length > 0) {
-            // Prefer female voices for Elenor (or adjust based on NPC personality)
-            const preferredVoice = voices.find(voice => 
-                voice.name.toLowerCase().includes('female') || 
-                voice.name.toLowerCase().includes('zira') ||
-                voice.name.toLowerCase().includes('samantha')
-            ) || voices.find(voice => voice.lang.startsWith('en'));
+            let preferredVoice = null;
+            
+            if (this.id === 1) {
+                // Elenor - prefer female voices
+                preferredVoice = voices.find(voice => 
+                    voice.name.toLowerCase().includes('female') || 
+                    voice.name.toLowerCase().includes('zira') ||
+                    voice.name.toLowerCase().includes('samantha')
+                ) || voices.find(voice => voice.lang.startsWith('en'));
+            } else if (this.id === 2) {
+                // Marcus - prefer male voices
+                preferredVoice = voices.find(voice => 
+                    voice.name.toLowerCase().includes('male') || 
+                    voice.name.toLowerCase().includes('david') ||
+                    voice.name.toLowerCase().includes('mark') ||
+                    voice.name.toLowerCase().includes('richard') ||
+                    voice.name.toLowerCase().includes('daniel')
+                ) || voices.find(voice => 
+                    voice.lang.startsWith('en') && 
+                    !voice.name.toLowerCase().includes('female') &&
+                    !voice.name.toLowerCase().includes('zira') &&
+                    !voice.name.toLowerCase().includes('samantha')
+                ) || voices.find(voice => voice.lang.startsWith('en'));
+            } else {
+                // Default - any English voice
+                preferredVoice = voices.find(voice => voice.lang.startsWith('en'));
+            }
             
             if (preferredVoice) {
                 utterance.voice = preferredVoice;
