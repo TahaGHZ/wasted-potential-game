@@ -88,7 +88,7 @@ class Game {
     createLamps() {
         // Create 2 lamps at strategic positions
         const lampPositions = [
-            new THREE.Vector3(8, 0, 8),   // Near hut
+            new THREE.Vector3(1, 0, 1),   // Near hut
             new THREE.Vector3(-8, 0, -8)  // Opposite side
         ];
         
@@ -101,16 +101,24 @@ class Game {
     }
     
     spawnNPCs() {
-        // Spawn 2 NPCs near the player (at origin)
-        const spawnPositions = [
-            new THREE.Vector3(5, 0, 5),
-            new THREE.Vector3(-5, 0, 5)
-        ];
+        // Spawn 1 merchant NPC behind the counter at the merchant place
+        // Merchant place is at (10, 0, 10), counter is at z = -1.5 relative to merchant place
+        // So merchant should be at z = -0.5 (behind counter) relative to merchant place
+        const merchantPosition = new THREE.Vector3(10, 0, 9.5); // Behind the counter
         
-        spawnPositions.forEach((position, index) => {
-            const npc = new NPC(this.scene, position, index, this.environmentManager);
-            this.npcs.push(npc);
-        });
+        const merchant = new NPC(this.scene, merchantPosition, 0, this.environmentManager);
+        this.npcs.push(merchant);
+        
+        // Spawn 2 NPCs near trees
+        // Tree positions: (-15, 15), (20, -10), (-20, -15), (15, 20), (-10, 25), (25, 10), (-25, -5)
+        const npc1Position = new THREE.Vector3(-12, 0, 12); // Near tree at (-15, 15)
+        const npc2Position = new THREE.Vector3(17, 0, -7); // Near tree at (20, -10)
+        
+        const npc1 = new NPC(this.scene, npc1Position, 1, this.environmentManager);
+        const npc2 = new NPC(this.scene, npc2Position, 2, this.environmentManager);
+        
+        this.npcs.push(npc1);
+        this.npcs.push(npc2);
     }
     
     onWindowResize() {
