@@ -31,6 +31,14 @@ export class NPC {
         this.speechTimeout = null;
         this.setupSpeechBubble();
         
+        // Text-to-speech system
+        this.speechSynthesis = window.speechSynthesis;
+        this.currentUtterance = null;
+        this.voicesLoaded = false;
+        
+        // Load voices (may need to wait for them to be available)
+        this.loadVoices();
+        
         // Name tag system
         this.nameTag = null;
         this.setupNameTag();
@@ -359,6 +367,12 @@ export class NPC {
         this.speechBubble.style.display = 'block';
         this.state = 'talking';
         
+        // Stop any current speech
+        this.stopSpeaking();
+        
+        // Start text-to-speech
+        this.speakText(message);
+        
         // Clear existing timeout
         if (this.speechTimeout) {
             clearTimeout(this.speechTimeout);
@@ -372,6 +386,86 @@ export class NPC {
                 this.state = 'idle';
             }
         }, duration);
+    }
+    
+    loadVoices() {
+        if (!this.speechSynthesis) {
+            return;
+        }
+        
+        // Try to get voices immediately
+        const voices = this.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+            this.voicesLoaded = true;
+            return;
+        }
+        
+        // If voices aren't loaded yet, wait for the voiceschanged event
+        this.speechSynthesis.onvoiceschanged = () => {
+            this.voicesLoaded = true;
+            console.log(`[NPC ${this.id}] Voices loaded`);
+        };
+    }
+    
+    speakText(text) {
+        if (!this.speechSynthesis) {
+            console.warn(`[NPC ${this.id}] Speech synthesis not available`);
+            return;
+        }
+        
+        // Stop any current speech
+        if (this.currentUtterance) {
+            this.speechSynthesis.cancel();
+        }
+        
+        // Create new utterance
+        const utterance = new SpeechSynthesisUtterance(text);
+        
+        // Configure voice settings
+        utterance.rate = 1.0; // Normal speed
+        utterance.pitch = 1.0; // Normal pitch
+        utterance.volume = 0.8; // 80% volume
+        utterance.lang = 'en-US';
+        
+        // Try to use a more natural voice if available
+        const voices = this.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+            // Prefer female voices for Elenor (or adjust based on NPC personality)
+            const preferredVoice = voices.find(voice => 
+                voice.name.toLowerCase().includes('female') || 
+                voice.name.toLowerCase().includes('zira') ||
+                voice.name.toLowerCase().includes('samantha')
+            ) || voices.find(voice => voice.lang.startsWith('en'));
+            
+            if (preferredVoice) {
+                utterance.voice = preferredVoice;
+                console.log(`[NPC ${this.id}] Using voice: ${preferredVoice.name}`);
+            }
+        }
+        
+        // Event handlers
+        utterance.onend = () => {
+            console.log(`[NPC ${this.id}] Speech synthesis ended`);
+            this.currentUtterance = null;
+        };
+        
+        utterance.onerror = (event) => {
+            console.error(`[NPC ${this.id}] Speech synthesis error:`, event.error);
+            this.currentUtterance = null;
+        };
+        
+        // Store reference and speak
+        this.currentUtterance = utterance;
+        this.speechSynthesis.speak(utterance);
+        console.log(`[NPC ${this.id}] Speaking text: "${text}"`);
+    }
+    
+    stopSpeaking() {
+        if (this.speechSynthesis && this.currentUtterance) {
+            this.speechSynthesis.cancel();
+            this.currentUtterance = null;
+            console.log(`[NPC ${this.id}] Speech synthesis stopped`);
+        }
     }
     
     setTargetPosition(position) {
