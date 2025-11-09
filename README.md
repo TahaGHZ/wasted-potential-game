@@ -2,6 +2,7 @@
 
 A Three.js first-person game MVP with environment and NPCs.
 
+Watch the project demo : https://drive.google.com/drive/folders/1wMcjeZUnxxQjFv-XirCTFLBwgLxFhf4J?usp=drive_link
 ## Features
 
 - First-person perspective with WASD movement and mouse look
