@@ -703,7 +703,7 @@ Based on your personality, backstory, player reputation, and the current situati
             console.log(`[NPC ${this.npc.id}] Found nearest lamp at distance ${minDist.toFixed(2)}`);
             
             // If already close enough, toggle directly
-            if (minDist < 3.0) {
+            if (minDist < 1.5) {
                 console.log(`[NPC ${this.npc.id}] Already close enough, toggling lamp...`);
                 nearest.toggle();
                 console.log(`[NPC ${this.npc.id}] Lamp toggled`);

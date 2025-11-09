@@ -82,6 +82,11 @@ export class ProjectileSystem {
     update(delta, npcs = []) {
         const hits = [];
         
+        // Debug: log projectile and NPC counts
+        if (this.projectiles.length > 0) {
+            console.log(`[ProjectileSystem] Checking ${this.projectiles.length} projectile(s) against ${npcs.length} NPC(s)`);
+        }
+        
         for (let i = this.projectiles.length - 1; i >= 0; i--) {
             const projectile = this.projectiles[i];
             
@@ -119,16 +124,21 @@ export class ProjectileSystem {
             
             // Check collision with NPCs
             for (const npc of npcs) {
-                if (!npc.mesh || npc.id === projectile.thrower?.id) {
-                    continue; // Skip if no mesh or same thrower
+                if (!npc.mesh) {
+                    console.warn(`[ProjectileSystem] NPC ${npc.id} has no mesh`);
+                    continue;
+                }
+                
+                if (npc.id === projectile.thrower?.id) {
+                    continue; // Skip if same thrower
                 }
                 
                 // Get NPC world position (mesh position is the world position since it's a Group)
                 const npcWorldPosition = new THREE.Vector3();
                 npc.mesh.getWorldPosition(npcWorldPosition);
                 
-                // Use NPC's stored position as fallback (it's set when NPC is created)
-                const npcPosition = npc.position || npcWorldPosition;
+                // Always use mesh world position for accuracy (it's the actual position in the scene)
+                const npcPosition = npcWorldPosition;
                 
                 // Calculate distance (using X and Z for horizontal distance, Y for vertical)
                 const horizontalDistance = Math.sqrt(
@@ -136,23 +146,32 @@ export class ProjectileSystem {
                     Math.pow(projectile.position.z - npcPosition.z, 2)
                 );
                 
-                const verticalDistance = Math.abs(projectile.position.y - (npcPosition.y + 1.0)); // NPC center is around y=1
+                // NPC mesh structure: 
+                // - mesh.position is at ground level (feet at y=0 relative to mesh)
+                // - bodyGroup is at y=1.2 relative to mesh (so feet are at mesh.y + 1.2 - 1.2 = mesh.y)
+                // - torso center is at y=0.5 relative to bodyGroup
+                // So NPC center (torso) is at: npcPosition.y + 1.2 + 0.5 = npcPosition.y + 1.7
+                // NPC height is approximately 2.0 units (from feet to head)
+                const npcCenterY = npcPosition.y + 1.7; // Torso center
+                const verticalDistance = Math.abs(projectile.position.y - npcCenterY);
                 
                 // NPC collision radius (approximate body size)
-                const npcRadius = 0.6; // Increased for better collision detection
-                const npcHeight = 2.0; // NPC height
+                const npcRadius = 0.8; // Increased for better collision detection
+                const npcHeight = 2.5; // NPC height (increased tolerance)
                 
                 // Check if projectile is within NPC bounds
-                if (horizontalDistance < npcRadius && verticalDistance < npcHeight / 2) {
+                // Use more lenient collision detection - allow vertical distance up to npcHeight (not just half)
+                // This accounts for projectiles passing through the NPC body at various heights
+                if (horizontalDistance < npcRadius && verticalDistance < npcHeight) {
                     // Hit NPC!
-                    if (this.debug) {
-                        console.log(`Collision detected! NPC ${npc.id}:`, {
-                            horizontalDist: horizontalDistance.toFixed(2),
-                            verticalDist: verticalDistance.toFixed(2),
-                            projectilePos: projectile.position,
-                            npcPos: npcPosition
-                        });
-                    }
+                    console.log(`[ProjectileSystem] Collision detected! NPC ${npc.id}:`, {
+                        horizontalDist: horizontalDistance.toFixed(2),
+                        verticalDist: verticalDistance.toFixed(2),
+                        projectilePos: { x: projectile.position.x.toFixed(2), y: projectile.position.y.toFixed(2), z: projectile.position.z.toFixed(2) },
+                        npcPos: { x: npcPosition.x.toFixed(2), y: npcPosition.y.toFixed(2), z: npcPosition.z.toFixed(2) },
+                        npcCenterY: npcCenterY.toFixed(2),
+                        thrower: projectile.thrower?.id || 'unknown'
+                    });
                     
                     projectile.hit = true;
                     hits.push({
@@ -168,12 +187,15 @@ export class ProjectileSystem {
                     
                     this.removeProjectile(i);
                     break;
-                } else if (this.debug && horizontalDistance < npcRadius * 2) {
+                } else if (horizontalDistance < npcRadius * 2) {
                     // Log near misses for debugging
-                    console.log(`Near miss on NPC ${npc.id}:`, {
+                    console.log(`[ProjectileSystem] Near miss on NPC ${npc.id}:`, {
                         horizontalDist: horizontalDistance.toFixed(2),
                         verticalDist: verticalDistance.toFixed(2),
-                        required: { h: npcRadius, v: npcHeight / 2 }
+                        required: { h: npcRadius, v: npcHeight / 2 },
+                        projectilePos: { x: projectile.position.x.toFixed(2), y: projectile.position.y.toFixed(2), z: projectile.position.z.toFixed(2) },
+                        npcPos: { x: npcPosition.x.toFixed(2), y: npcPosition.y.toFixed(2), z: npcPosition.z.toFixed(2) },
+                        npcCenterY: npcCenterY.toFixed(2)
                     });
                 }
             }
