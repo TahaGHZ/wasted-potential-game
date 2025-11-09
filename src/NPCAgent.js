@@ -14,8 +14,9 @@ export class NPCAgent {
         this.model = 'gemini-2.0-flash-lite'; // Using Gemini 2.0 Flash-Lite as specified
         this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
         
+        
         // Groq API for sentiment analysis
-        this.groqApiKey = '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';
+        this.groqApiKey = import.meta.env.VITE_GROQ_API_KEY || 'api_key_not_set';
         this.groqBaseUrl = 'https://api.groq.com/openai/v1/chat/completions';
         
         // Agent state
