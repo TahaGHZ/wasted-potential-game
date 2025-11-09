@@ -11,7 +11,7 @@ export class NPCAgent {
         this.game = game;
         this.memory = memory;
         this.playerInfo = playerInfo || { name: 'Player', interests: '' };
-        this.apiKey = 'AIzaSyAgY5r2VMnKWwlWR37REz3-FpsfaGzVHPg';
+        this.apiKey = 'AIzaSyDZFmaA6Ddq5jwoDh-ZOME4AxO9r44mCHc';
         this.model = 'gemini-2.0-flash-lite'; // Using Gemini 2.0 Flash-Lite as specified
         this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
         
