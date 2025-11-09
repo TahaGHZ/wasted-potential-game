@@ -34,6 +34,15 @@ export class NPC {
         // Name tag system
         this.nameTag = null;
         this.setupNameTag();
+        
+        // Inventory system (for rocks)
+        this.inventory = {
+            rocks: 0
+        };
+        
+        // Rock counter display
+        this.rockCounter = null;
+        this.setupRockCounter();
     }
     
     generatePersonality() {
@@ -163,6 +172,11 @@ export class NPC {
         if (this.nameTag) {
             this.updateNameTag();
         }
+        
+        // Update rock counter position
+        if (this.rockCounter) {
+            this.updateRockCounter();
+        }
     }
     
     updateMovement(delta) {
@@ -250,6 +264,73 @@ export class NPC {
         this.nameTag.style.left = `${x}px`;
         this.nameTag.style.top = `${y}px`;
         this.nameTag.style.transform = 'translateX(-50%)';
+    }
+    
+    setupRockCounter() {
+        // Create rock counter element
+        this.rockCounter = document.createElement('div');
+        this.rockCounter.id = `npc-rock-counter-${this.id}`;
+        this.rockCounter.textContent = '🪨 0';
+        this.rockCounter.style.cssText = `
+            position: absolute;
+            color: white;
+            background: rgba(100, 50, 0, 0.8);
+            padding: 2px 8px;
+            border-radius: 4px;
+            z-index: 98;
+            font-size: 11px;
+            text-align: center;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+            white-space: nowrap;
+            display: none;
+        `;
+        document.body.appendChild(this.rockCounter);
+    }
+    
+    updateRockCounter() {
+        if (!this.rockCounter || !this.game) return;
+        
+        // Only show if NPC has rocks
+        if (this.inventory.rocks > 0) {
+            this.rockCounter.textContent = `🪨 ${this.inventory.rocks}`;
+            this.rockCounter.style.display = 'block';
+            
+            // Convert 3D position to screen coordinates
+            const vector = this.mesh.position.clone();
+            vector.y += 2.0; // Below name tag
+            
+            // Project to screen space
+            vector.project(this.game.camera);
+            
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+            
+            this.rockCounter.style.left = `${x}px`;
+            this.rockCounter.style.top = `${y}px`;
+            this.rockCounter.style.transform = 'translateX(-50%)';
+        } else {
+            this.rockCounter.style.display = 'none';
+        }
+    }
+    
+    addRock(count = 1) {
+        this.inventory.rocks += count;
+        this.updateRockCounter();
+    }
+    
+    removeRock(count = 1) {
+        if (this.inventory.rocks >= count) {
+            this.inventory.rocks -= count;
+            this.updateRockCounter();
+            return true;
+        }
+        return false;
+    }
+    
+    getRockCount() {
+        return this.inventory.rocks;
     }
     
     updateSpeechBubble() {

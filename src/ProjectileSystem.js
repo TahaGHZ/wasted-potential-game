@@ -21,6 +21,13 @@ export class ProjectileSystem {
      * @returns {Object} - Projectile object
      */
     throwRock(startPosition, direction, speed = 15, thrower = null) {
+        console.log('[ProjectileSystem] throwRock called:', {
+            startPosition: { x: startPosition.x.toFixed(2), y: startPosition.y.toFixed(2), z: startPosition.z.toFixed(2) },
+            direction: { x: direction.x.toFixed(2), y: direction.y.toFixed(2), z: direction.z.toFixed(2) },
+            speed: speed,
+            thrower: thrower
+        });
+        
         const projectile = {
             mesh: this.createRockProjectile(),
             position: startPosition.clone(),
@@ -35,6 +42,12 @@ export class ProjectileSystem {
         this.scene.add(projectile.mesh);
         this.projectiles.push(projectile);
         
+        console.log('[ProjectileSystem] Projectile created and added to scene:', {
+            position: { x: projectile.position.x.toFixed(2), y: projectile.position.y.toFixed(2), z: projectile.position.z.toFixed(2) },
+            velocity: { x: projectile.velocity.x.toFixed(2), y: projectile.velocity.y.toFixed(2), z: projectile.velocity.z.toFixed(2) },
+            totalProjectiles: this.projectiles.length
+        });
+        
         return projectile;
     }
     
@@ -44,13 +57,18 @@ export class ProjectileSystem {
     createRockProjectile() {
         const rockGroup = new THREE.Group();
         
-        const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x696969 });
-        const size = 0.15;
+        const rockMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x696969,
+            emissive: 0x333333 // Make it slightly visible
+        });
+        const size = 0.2; // Slightly larger for visibility
         const rockGeometry = new THREE.BoxGeometry(size, size * 0.6, size);
         const rock = new THREE.Mesh(rockGeometry, rockMaterial);
         rock.castShadow = true;
         rock.receiveShadow = true;
         rockGroup.add(rock);
+        
+        console.log('[ProjectileSystem] Created projectile mesh');
         
         return rockGroup;
     }

@@ -99,6 +99,10 @@ class Game {
         this.setupSpeechToText();
         this.setupSpeechUI();
         
+        // Text input system
+        this.textInputVisible = false;
+        this.setupTextInput();
+        
         // Listen for rock collection
         document.addEventListener('interactionResult', (event) => {
             if (event.detail === true) {
@@ -201,10 +205,13 @@ class Game {
             this.handleFinalTranscript(finalTranscript);
         });
         
-        // Set up V key listener
+        // Set up V key listener (only if text input is not visible)
         let vKeyPressed = false;
         
         document.addEventListener('keydown', (event) => {
+            // Don't start speaking if text input is visible
+            if (this.textInputVisible) return;
+            
             if (event.code === 'KeyV' && !vKeyPressed) {
                 vKeyPressed = true;
                 this.startSpeaking();
@@ -246,6 +253,139 @@ class Game {
         }
         
         this.speechCaption = speechDisplay;
+    }
+    
+    setupTextInput() {
+        // Create text input container
+        let textInputContainer = document.getElementById('text-input-container');
+        if (!textInputContainer) {
+            textInputContainer = document.createElement('div');
+            textInputContainer.id = 'text-input-container';
+            textInputContainer.style.cssText = `
+                position: absolute;
+                bottom: 150px;
+                left: 50%;
+                transform: translateX(-50%);
+                z-index: 101;
+                display: none;
+                font-family: Arial, sans-serif;
+            `;
+            document.body.appendChild(textInputContainer);
+        }
+        
+        // Create text input field
+        let textInput = document.getElementById('text-input');
+        if (!textInput) {
+            textInput = document.createElement('input');
+            textInput.id = 'text-input';
+            textInput.type = 'text';
+            textInput.placeholder = 'Type your message... (Enter to send, Esc to cancel)';
+            textInput.style.cssText = `
+                width: 500px;
+                padding: 15px 20px;
+                font-size: 18px;
+                border: 3px solid rgba(255, 255, 255, 0.8);
+                border-radius: 8px;
+                background: rgba(0, 0, 0, 0.9);
+                color: white;
+                outline: none;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+            `;
+            textInputContainer.appendChild(textInput);
+        }
+        
+        this.textInputContainer = textInputContainer;
+        this.textInput = textInput;
+        
+        // Set up keyboard listeners
+        document.addEventListener('keydown', (event) => {
+            // T key to toggle text input
+            if (event.code === 'KeyT' && !event.repeat) {
+                // Don't toggle if already typing in the input
+                if (event.target === textInput) return;
+                
+                this.toggleTextInput();
+                event.preventDefault();
+            }
+            
+            // Enter key to submit (only when input is visible and focused)
+            if (event.code === 'Enter' && this.textInputVisible && document.activeElement === textInput) {
+                this.submitTextInput();
+                event.preventDefault();
+            }
+            
+            // Escape key to cancel (only when input is visible)
+            if (event.code === 'Escape' && this.textInputVisible) {
+                this.hideTextInput();
+                event.preventDefault();
+            }
+        });
+        
+        // Prevent game controls when typing
+        textInput.addEventListener('focus', () => {
+            this.controller.enabled = false;
+        });
+        
+        textInput.addEventListener('blur', () => {
+            this.controller.enabled = true;
+        });
+    }
+    
+    toggleTextInput() {
+        if (this.textInputVisible) {
+            this.hideTextInput();
+        } else {
+            this.showTextInput();
+        }
+    }
+    
+    showTextInput() {
+        this.textInputVisible = true;
+        this.textInputContainer.style.display = 'block';
+        this.textInput.value = '';
+        this.textInput.focus();
+        
+        // Disable controller while typing
+        this.controller.enabled = false;
+    }
+    
+    hideTextInput() {
+        this.textInputVisible = false;
+        this.textInputContainer.style.display = 'none';
+        this.textInput.value = '';
+        
+        // Re-enable controller
+        this.controller.enabled = true;
+        this.textInput.blur();
+    }
+    
+    submitTextInput() {
+        const text = this.textInput.value.trim();
+        
+        if (text === '') {
+            // Empty message, just hide
+            this.hideTextInput();
+            return;
+        }
+        
+        console.log('Text input submitted:', text);
+        
+        // Show the message briefly (similar to speech caption)
+        if (this.speechCaption) {
+            this.speechCaption.textContent = text;
+            this.speechCaption.style.display = 'block';
+            this.speechCaption.style.background = 'rgba(0, 0, 0, 0.8)';
+            
+            setTimeout(() => {
+                this.speechCaption.style.display = 'none';
+            }, 3000);
+        }
+        
+        // Hide input
+        this.hideTextInput();
+        
+        // Send to nearby NPCs (same as speech-to-text)
+        this.sendToNearbyNPCs(text);
     }
     
     startSpeaking() {

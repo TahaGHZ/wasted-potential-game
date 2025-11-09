@@ -135,7 +135,7 @@ export class NPCAgent {
             },
             systemInstruction: {
                 parts: [{
-                    text: 'You are an NPC agent in a 3D game. You MUST use function calls to interact with the world. Always call at least one function tool when responding to events. Use speak() to communicate, move_to() or navigation tools to move, and interaction tools to interact with objects. Act according to your personality and backstory.'
+                    text: 'You are an NPC agent in a 3D game. You MUST use function calls to interact with the world. Always call at least one function tool when responding to events. Use speak() to communicate, move_to() or navigation tools to move, and interaction tools to interact with objects. Act according to your personality and backstory. When using speak(), use PLAIN TEXT only - no RPG formatting, asterisks, or narrative descriptions.'
                 }]
             }
         };
@@ -146,6 +146,17 @@ export class NPCAgent {
                 contentsCount: requestBody.contents.length,
                 toolsCount: requestBody.tools[0].functionDeclarations.length
             });
+            
+            // Log the final prompt that will be sent to Gemini
+            console.log(`[NPC ${this.npc.id}] ========== FINAL PROMPT TO GEMINI ==========`);
+            console.log(`[NPC ${this.npc.id}] System Instruction:`, requestBody.systemInstruction.parts[0].text);
+            console.log(`[NPC ${this.npc.id}] Conversation History (${conversationHistory.length} messages):`);
+            conversationHistory.forEach((msg, idx) => {
+                console.log(`[NPC ${this.npc.id}]   [${idx + 1}] ${msg.role}: ${msg.parts[0].text.substring(0, 100)}${msg.parts[0].text.length > 100 ? '...' : ''}`);
+            });
+            console.log(`[NPC ${this.npc.id}] Current Message (full):`);
+            console.log(`[NPC ${this.npc.id}] ${fullMessage}`);
+            console.log(`[NPC ${this.npc.id}] ===========================================`);
             
             const response = await fetch(url, {
                 method: 'POST',
@@ -272,11 +283,20 @@ ${this.getToolDefinitions().map(tool => `- ${tool.name}: ${tool.description}`).j
 When responding to events:
 1. ALWAYS call at least one function tool to take action
 2. Use the 'speak' tool to communicate with others
-3. Use movement tools (move_to, go_to_nearest_rock, go_to_nearest_lamp) to navigate
-4. Use interaction tools (collect_rock, throw_rock, toggle_lamp) to interact with objects
-5. Use hide_from_rain when weather is rainy
+3. Use collect_nearest_rock() to find, move to, and collect a rock in one action
+4. Use interact_with_nearest_lamp() to find, move to, and toggle a lamp in one action
+5. Use move_to() for general movement to specific coordinates
+6. Use hide_from_rain when weather is rainy
+7. You can collect rocks to add them to your inventory, then throw them using throw_rock() with a target_id (e.g., "player" for the player, or "1", "2" for NPC IDs)
 
 DO NOT just respond with text - you MUST call function tools to take actions in the world.
+
+IMPORTANT - Response Format:
+- When using the speak() tool, use PLAIN TEXT only. Do NOT use RPG-style formatting like "*character says*" or "*character does action*"
+- Do NOT include asterisks, italics, or narrative descriptions in your speech
+- Just speak naturally as the character would, using plain conversational text
+- Example: Instead of "*Elenor says, her voice laced with disapproval*", just say "Very well" or "I understand"
+- Your personality should come through in WHAT you say, not HOW you format it
 
 Recent actions: ${context.memory.recentActions.slice(-2).map(a => a.action).join(', ') || 'none'}
 
@@ -291,13 +311,13 @@ Based on your personality, backstory, and the current situation, decide what act
         
         switch (eventType) {
             case 'player_query':
-                return `The player nearby said: "${eventData.transcript}"\n\nYou MUST respond by calling function tools. Use the speak() tool to respond verbally, and consider using other tools like move_to(), go_to_nearest_rock(), or collect_rock() if appropriate. What actions do you take?`;
+                return `The player nearby said: "${eventData.transcript}"\n\nYou MUST respond by calling function tools. Use the speak() tool to respond verbally, and consider using other tools like move_to(), collect_nearest_rock(), or interact_with_nearest_lamp() if appropriate. What actions do you take?`;
             
             case 'environment_change':
-                return `The environment changed: ${eventData.change} (${eventData.details || ''})\n\nYou MUST react by calling function tools. For example, if it's raining, use hide_from_rain(). If it's getting dark, use go_to_nearest_lamp() and toggle_lamp(). What actions do you take?`;
+                return `The environment changed: ${eventData.change} (${eventData.details || ''})\n\nYou MUST react by calling function tools. For example, if it's raining, use hide_from_rain(). If it's getting dark, use interact_with_nearest_lamp() to find and toggle a lamp. What actions do you take?`;
             
             case 'hit':
-                return `You were hit by ${eventData.thrower?.id || 'someone'}!\n\nYou MUST react by calling function tools. You could use speak() to respond, throw_rock() to retaliate, or move_to() to get away. What actions do you take?`;
+                return `You were hit by ${eventData.thrower?.id || 'someone'}!\n\nYou MUST react by calling function tools. You could use speak() to respond, throw_rock() with target_id to retaliate (e.g., throw_rock("player") or throw_rock("1") for an NPC), or move_to() to get away. What actions do you take?`;
             
             case 'periodic':
                 return `Periodic check: What do you want to do now? Use function tools to take actions in the world.`;
@@ -337,8 +357,8 @@ Based on your personality, backstory, and the current situation, decide what act
                 }
             },
             {
-                name: 'go_to_nearest_rock',
-                description: 'Find and move to the nearest collectable rock',
+                name: 'collect_nearest_rock',
+                description: 'Find the nearest collectable rock, move to it, and collect it automatically. This function handles both movement and collection in one action.',
                 parameters: {
                     type: 'object',
                     properties: {},
@@ -346,17 +366,8 @@ Based on your personality, backstory, and the current situation, decide what act
                 }
             },
             {
-                name: 'go_to_nearest_lamp',
-                description: 'Find and move to the nearest lamp',
-                parameters: {
-                    type: 'object',
-                    properties: {},
-                    required: []
-                }
-            },
-            {
-                name: 'collect_rock',
-                description: 'Collect a rock at current position (if nearby)',
+                name: 'interact_with_nearest_lamp',
+                description: 'Find the nearest lamp, move to it, and toggle it on/off automatically. This function handles both movement and interaction in one action.',
                 parameters: {
                     type: 'object',
                     properties: {},
@@ -365,24 +376,13 @@ Based on your personality, backstory, and the current situation, decide what act
             },
             {
                 name: 'throw_rock',
-                description: 'Throw a rock at a target position',
+                description: 'Aim and throw a rock at a target (player or NPC). The target can be "player" for the player, or an NPC ID number (e.g., "1", "2"). The function will automatically aim at the target and throw the projectile.',
                 parameters: {
                     type: 'object',
                     properties: {
-                        target_x: { type: 'number', description: 'Target X coordinate' },
-                        target_y: { type: 'number', description: 'Target Y coordinate' },
-                        target_z: { type: 'number', description: 'Target Z coordinate' }
+                        target_id: { type: 'string', description: 'Target ID: "player" for the player, or an NPC ID number (e.g., "1", "2")' }
                     },
-                    required: ['target_x', 'target_z']
-                }
-            },
-            {
-                name: 'toggle_lamp',
-                description: 'Toggle a lamp on/off (if nearby)',
-                parameters: {
-                    type: 'object',
-                    properties: {},
-                    required: []
+                    required: ['target_id']
                 }
             },
             {
@@ -450,24 +450,16 @@ Based on your personality, backstory, and the current situation, decide what act
                     this.speak(args.message || '');
                     break;
                 
-                case 'go_to_nearest_rock':
-                    this.goToNearestRock();
+                case 'collect_nearest_rock':
+                    this.collectNearestRock();
                     break;
                 
-                case 'go_to_nearest_lamp':
-                    this.goToNearestLamp();
-                    break;
-                
-                case 'collect_rock':
-                    this.collectRock();
+                case 'interact_with_nearest_lamp':
+                    this.interactWithNearestLamp();
                     break;
                 
                 case 'throw_rock':
-                    this.throwRock(args.target_x, args.target_y || 1.6, args.target_z);
-                    break;
-                
-                case 'toggle_lamp':
-                    this.toggleLamp();
+                    this.throwRock(args.target_id);
                     break;
                 
                 case 'get_player_position':
@@ -504,11 +496,12 @@ Based on your personality, backstory, and the current situation, decide what act
         this.memory.addConversation('assistant', message);
     }
     
-    goToNearestRock() {
-        console.log(`[NPC ${this.npc.id}] Searching for nearest rock...`);
+    collectNearestRock() {
+        console.log(`[NPC ${this.npc.id}] Finding nearest rock to collect...`);
         const rocks = this.game.getAvailableRocks();
         if (rocks.length === 0) {
             console.log(`[NPC ${this.npc.id}] No rocks available`);
+            this.speak("I don't see any rocks nearby.");
             return;
         }
         
@@ -525,27 +518,50 @@ Based on your personality, backstory, and the current situation, decide what act
         
         if (nearest) {
             console.log(`[NPC ${this.npc.id}] Found nearest rock at distance ${minDist.toFixed(2)}`);
-            // Add offset to avoid collision (move to position slightly away from rock)
-            const offset = 1.5; // Distance to stop from rock
+            
+            // If already close enough, collect directly
+            if (minDist < 2.0) {
+                console.log(`[NPC ${this.npc.id}] Already close enough, collecting rock...`);
+                if (nearest.collect && nearest.collect()) {
+                    this.npc.addRock(1);
+                    console.log(`[NPC ${this.npc.id}] Rock collected! NPC now has ${this.npc.getRockCount()} rock(s)`);
+                }
+                return;
+            }
+            
+            // Move to rock position (with small offset to avoid collision)
+            const offset = 1.5;
             const direction = new THREE.Vector3()
                 .subVectors(this.npc.position, nearest.position)
                 .normalize();
             
             // If already very close, use a default offset direction
             if (direction.length() < 0.1) {
-                direction.set(1, 0, 0); // Default to positive X direction
+                direction.set(1, 0, 0);
             }
             
             const targetPos = nearest.position.clone().add(direction.multiplyScalar(offset));
             this.moveTo(targetPos.x, 0, targetPos.z);
+            
+            // Store the rock reference for collection after movement
+            // Always try to collect after movement, regardless of distance
+            setTimeout(() => {
+                if (!nearest.isCollected) {
+                    if (nearest.collect && nearest.collect()) {
+                        this.npc.addRock(1);
+                        console.log(`[NPC ${this.npc.id}] Rock collected after movement! NPC now has ${this.npc.getRockCount()} rock(s)`);
+                    }
+                }
+            }, 2000); // Wait 2 seconds for movement
         }
     }
     
-    goToNearestLamp() {
-        console.log(`[NPC ${this.npc.id}] Searching for nearest lamp...`);
+    interactWithNearestLamp() {
+        console.log(`[NPC ${this.npc.id}] Finding nearest lamp to interact...`);
         const lamps = this.game.lamps || [];
         if (lamps.length === 0) {
             console.log(`[NPC ${this.npc.id}] No lamps available`);
+            this.speak("I don't see any lamps nearby.");
             return;
         }
         
@@ -562,59 +578,133 @@ Based on your personality, backstory, and the current situation, decide what act
         
         if (nearest) {
             console.log(`[NPC ${this.npc.id}] Found nearest lamp at distance ${minDist.toFixed(2)}`);
-            // Add offset to avoid collision (move to position slightly away from lamp)
-            const offset = 1.5; // Distance to stop from lamp
+            
+            // If already close enough, toggle directly
+            if (minDist < 3.0) {
+                console.log(`[NPC ${this.npc.id}] Already close enough, toggling lamp...`);
+                nearest.toggle();
+                console.log(`[NPC ${this.npc.id}] Lamp toggled`);
+                return;
+            }
+            
+            // Move to lamp position (with small offset to avoid collision)
+            const offset = 1.5;
             const direction = new THREE.Vector3()
                 .subVectors(this.npc.position, nearest.position)
                 .normalize();
             
             // If already very close, use a default offset direction
             if (direction.length() < 0.1) {
-                direction.set(1, 0, 0); // Default to positive X direction
+                direction.set(1, 0, 0);
             }
             
             const targetPos = nearest.position.clone().add(direction.multiplyScalar(offset));
             this.moveTo(targetPos.x, 0, targetPos.z);
+            
+            // Store the lamp reference for toggling after movement
+            // Always try to toggle after movement, regardless of distance
+            setTimeout(() => {
+                nearest.toggle();
+                console.log(`[NPC ${this.npc.id}] Lamp toggled after movement`);
+            }, 2000); // Wait 2 seconds for movement
         }
     }
     
-    collectRock() {
-        console.log(`[NPC ${this.npc.id}] Attempting to collect rock...`);
-        const rocks = this.game.getAvailableRocks();
-        const nearby = rocks.filter(rock => 
-            this.npc.position.distanceTo(rock.position) < 2.0
-        );
+    throwRock(targetId) {
+        console.log(`[NPC ${this.npc.id}] Attempting to aim and throw rock at target: ${targetId}`);
         
-        if (nearby.length > 0) {
-            console.log(`[NPC ${this.npc.id}] Collecting rock at distance ${this.npc.position.distanceTo(nearby[0].position).toFixed(2)}`);
-            this.game.collectRock(nearby[0]);
-        } else {
-            console.log(`[NPC ${this.npc.id}] No rocks nearby to collect`);
+        // Check if NPC has rocks
+        if (this.npc.getRockCount() < 1) {
+            console.log(`[NPC ${this.npc.id}] Cannot throw rock - no rocks in inventory`);
+            this.speak("I don't have any rocks to throw!");
+            return;
         }
-    }
-    
-    throwRock(targetX, targetY, targetZ) {
-        console.log(`[NPC ${this.npc.id}] Throwing rock at (${targetX.toFixed(1)}, ${targetY.toFixed(1)}, ${targetZ.toFixed(1)})`);
-        const target = new THREE.Vector3(targetX, targetY, targetZ);
-        const direction = target.clone().sub(this.npc.position).normalize();
+        
+        // Find target position
+        let targetPos = null;
+        let targetName = '';
+        
+        if (targetId === 'player' || targetId === 'Player') {
+            // Target is the player
+            targetPos = this.game.camera.position.clone();
+            targetName = 'player';
+            console.log(`[NPC ${this.npc.id}] Targeting player at (${targetPos.x.toFixed(2)}, ${targetPos.y.toFixed(2)}, ${targetPos.z.toFixed(2)})`);
+        } else {
+            // Target is an NPC
+            const targetNPCId = parseInt(targetId);
+            if (isNaN(targetNPCId)) {
+                console.log(`[NPC ${this.npc.id}] Invalid target ID: ${targetId}`);
+                this.speak(`I don't know who "${targetId}" is.`);
+                return;
+            }
+            
+            // Find the NPC
+            const targetNPC = this.game.npcs.find(npc => npc.id === targetNPCId);
+            if (!targetNPC) {
+                console.log(`[NPC ${this.npc.id}] NPC ${targetNPCId} not found`);
+                this.speak(`I can't find NPC ${targetNPCId}.`);
+                return;
+            }
+            
+            // Don't throw at self
+            if (targetNPCId === this.npc.id) {
+                console.log(`[NPC ${this.npc.id}] Cannot throw at self`);
+                this.speak("I can't throw at myself!");
+                return;
+            }
+            
+            targetPos = targetNPC.position.clone();
+            targetPos.y += 1.6; // Aim at NPC head height
+            targetName = `NPC ${targetNPCId}`;
+            console.log(`[NPC ${this.npc.id}] Targeting ${targetName} at (${targetPos.x.toFixed(2)}, ${targetPos.y.toFixed(2)}, ${targetPos.z.toFixed(2)})`);
+        }
+        
+        // Remove rock from NPC inventory
+        if (!this.npc.removeRock(1)) {
+            console.log(`[NPC ${this.npc.id}] Failed to remove rock from inventory`);
+            return;
+        }
+        
+        // Calculate direction from NPC position to target
+        const startPos = this.npc.position.clone();
+        startPos.y += 1.6; // Throw from NPC head height
+        
+        // Calculate direction vector
+        const direction = new THREE.Vector3();
+        direction.subVectors(targetPos, startPos);
+        const distance = direction.length();
+        
+        if (distance < 0.1) {
+            console.log(`[NPC ${this.npc.id}] Target too close, cannot throw`);
+            this.npc.addRock(1); // Return rock
+            this.speak("The target is too close!");
+            return;
+        }
+        
+        direction.normalize();
         const speed = 15;
         
-        const thrower = { id: this.npc.id, type: 'npc' };
-        this.game.throwRockAt(this.npc.position, direction, speed, thrower, false);
-    }
-    
-    toggleLamp() {
-        console.log(`[NPC ${this.npc.id}] Attempting to toggle lamp...`);
-        const lamps = this.game.lamps || [];
-        const nearby = lamps.filter(lamp => 
-            this.npc.position.distanceTo(lamp.position) < 3.0
-        );
+        console.log(`[NPC ${this.npc.id}] Throw details:`, {
+            target: targetName,
+            startPos: { x: startPos.x.toFixed(2), y: startPos.y.toFixed(2), z: startPos.z.toFixed(2) },
+            targetPos: { x: targetPos.x.toFixed(2), y: targetPos.y.toFixed(2), z: targetPos.z.toFixed(2) },
+            direction: { x: direction.x.toFixed(2), y: direction.y.toFixed(2), z: direction.z.toFixed(2) },
+            speed: speed,
+            distance: distance.toFixed(2)
+        });
         
-        if (nearby.length > 0) {
-            console.log(`[NPC ${this.npc.id}] Toggling lamp at distance ${this.npc.position.distanceTo(nearby[0].position).toFixed(2)}`);
-            nearby[0].toggle();
+        const thrower = { id: this.npc.id, type: 'npc' };
+        
+        // Throw the rock (checkInventory = false since we already checked NPC inventory)
+        const success = this.game.throwRockAt(startPos, direction, speed, thrower, false);
+        
+        if (success) {
+            console.log(`[NPC ${this.npc.id}] Rock thrown successfully at ${targetName}! NPC now has ${this.npc.getRockCount()} rock(s)`);
+            console.log(`[NPC ${this.npc.id}] Projectile should be visible in scene`);
         } else {
-            console.log(`[NPC ${this.npc.id}] No lamps nearby to toggle`);
+            console.log(`[NPC ${this.npc.id}] Failed to throw rock - game.throwRockAt returned false`);
+            // Return rock to inventory if throw failed
+            this.npc.addRock(1);
         }
     }
     
